@@ -25,4 +25,11 @@
 
     <preference for="Nacento\Connector\Api\Data\BulkSkuResultInterface"
                 type="Nacento\Connector\Model\Data\BulkSkuResult"/>
+    
+    <preference for="Nacento\Connector\Api\Data\BulkStatsInterface"
+                type="Nacento\Connector\Model\Data\BulkStats"/>
+                
+    <preference for="Nacento\Connector\Api\Data\ImageStatsInterface"
+                type="Nacento\Connector\Model\Data\ImageStats"/>
+
 </config>
