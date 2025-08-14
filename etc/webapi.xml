@@ -9,4 +9,14 @@
             <resource ref="Magento_Catalog::products"/>
         </resources>
     </route>
+
+
+    <!-- RUTA BULK -->
+    <route url="/V1/nacento-connector/products/bulk/media" method="POST">
+        <service class="Nacento\Connector\Api\BulkGalleryManagementInterface" method="process"/>
+        <resources>
+            <resource ref="Magento_Catalog::products"/>
+        </resources>
+    </route>
+
 </routes>

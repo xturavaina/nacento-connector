@@ -9,4 +9,20 @@
     <!-- DTO del payload d’imatges -->
     <preference for="Nacento\Connector\Api\Data\ImageEntryInterface"
                 type="Nacento\Connector\Model\Data\ImageEntry"/>
+
+    <!-- endpoint bulk -->
+    <preference for="Nacento\Connector\Api\BulkGalleryManagementInterface"
+                type="Nacento\Connector\Model\GalleryProcessorBulk"/>
+
+    <preference for="Nacento\Connector\Api\Data\BulkRequestInterface"
+                type="Nacento\Connector\Model\Data\BulkRequest"/>
+
+    <preference for="Nacento\Connector\Api\Data\BulkItemInterface"
+                type="Nacento\Connector\Model\Data\BulkItem"/>
+
+    <preference for="Nacento\Connector\Api\Data\BulkResultInterface"
+                type="Nacento\Connector\Model\Data\BulkResult"/>
+
+    <preference for="Nacento\Connector\Api\Data\BulkSkuResultInterface"
+                type="Nacento\Connector\Model\Data\BulkSkuResult"/>
 </config>
