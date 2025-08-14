@@ -10,13 +10,15 @@ use Magento\Framework\Exception\LocalizedException;
 
 class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
 {
+
+
+
     /**
      * Get the value and record IDs of an existing image entry for a specific store.
      *
      * @param int $productId
      * @param int $attributeId
      * @param string $filePath
-     * @param int $storeId
      * @return array|null An array ['value_id' => int, 'record_id' => int] or null if not found.
      * @throws LocalizedException
      */
@@ -25,16 +27,20 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
         $connection = $this->getConnection();
         $linkTable = $this->getTable('catalog_product_entity_media_gallery_value_to_entity');
         $valueTable = $this->getTable('catalog_product_entity_media_gallery_value');
+        $metaTable  = $this->getTable('nacento_media_gallery_meta');
 
         $select = $connection->select()
             ->from(['main_table' => $this->getMainTable()], ['value_id'])
             ->join(['link' => $linkTable], 'main_table.value_id = link.value_id', [])
-            ->join(['value' => $valueTable], 'main_table.value_id = value.value_id', ['record_id'])
+            ->join(
+                ['value' => $valueTable],
+                'main_table.value_id = value.value_id AND value.entity_id = link.entity_id AND value.store_id = 0',
+                ['record_id']
+            )
+            ->joinLeft(['meta' => $metaTable], 'value.record_id = meta.record_id', ['s3_etag' => 's3_etag'])
             ->where('link.entity_id = ?', $productId)
-            ->where('value.entity_id = ?', $productId) // Condició addicional per a la JOIN
             ->where('main_table.attribute_id = ?', $attributeId)
-            ->where('main_table.value = ?', $filePath)
-            ->where('value.store_id = ?', 0); // Sempre busquem a la vista global
+            ->where('main_table.value = ?', $filePath);
 
         $result = $connection->fetchRow($select);
         return $result ?: null;
@@ -43,26 +49,6 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
 
 
 
-
-    // public function isImageAssigned(int $productId, int $attributeId, string $filePath): bool
-    // {
-    //     $connection = $this->getConnection();
-    //     $linkTable = $this->getTable('catalog_product_entity_media_gallery_value_to_entity');
-
-    //     $select = $connection->select()
-    //         ->from(['main_table' => $this->getMainTable()], 'main_table.value_id')
-    //         ->join(
-    //             ['link' => $linkTable],
-    //             'main_table.value_id = link.value_id',
-    //             []
-    //         )
-    //         ->where('link.entity_id = ?', $productId)
-    //         ->where('main_table.attribute_id = ?', $attributeId)
-    //         ->where('main_table.value = ?', $filePath);
-
-    //     return (bool)$connection->fetchOne($select);
-    // }
-
     /**
      * Inserts a new record into the main gallery table.
      *
@@ -70,12 +56,18 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
      * @return string
      * @throws LocalizedException
      */
-    public function insertNewRecord(array $data): string
+    public function insertNewRecord(array $data): int
     {
+        /** @var \Magento\Framework\DB\Adapter\Pdo\Mysql $connection */
         $connection = $this->getConnection();
-        $connection->insert($this->getMainTable(), $data);
-        return $connection->lastInsertId($this->getMainTable());
+        $table = $this->getMainTable();
+        $connection->insert($table, $data);
+        return (int)$connection->lastInsertId($table);
     }
+
+
+
+
 
     /**
      * Inserts OR updates the gallery value record using the correct unique key.
@@ -98,6 +90,10 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
         );
     }
 
+
+
+
+
     /**
      * Creates the link between a media gallery value and a product entity.
      *
@@ -114,14 +110,42 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
         );
     }
 
-        /**
+
+
+    /**
      * Inserts a new value record (label, position, etc.).
      */
-    public function insertValueRecord(array $data): void
+    public function insertValueRecord(array $data): int
     {
-        $this->getConnection()->insert($this->getTable('catalog_product_entity_media_gallery_value'), $data);
+        /** @var \Magento\Framework\DB\Adapter\Pdo\Mysql $connection */
+        $connection = $this->getConnection();
+
+        $table = $this->getTable('catalog_product_entity_media_gallery_value');
+
+        $connection->insert($table, $data);
+
+        return (int) $connection->lastInsertId($table);
     }
+
+
+
     
+    /**
+     * Save meta records to Nacento Media gallery table.
+     */
+    public function saveMetaRecord(int $recordId, ?string $etag): void
+    {
+        $this->getConnection()->insertOnDuplicate(
+            $this->getTable('nacento_media_gallery_meta'),
+            ['record_id' => $recordId, 's3_etag' => $etag],
+            ['s3_etag'] // i un updated_at si el tens amb on_update="true"
+        );
+    }
+
+
+
+
+
     /**
      * Updates an existing value record using its record_id.
      */

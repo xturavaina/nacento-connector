@@ -11,12 +11,12 @@
     </route>
 
     <!-- RUTA GET DE TEST -->
-    <route url="/V1/nacento-connector/test" method="GET">
+    <!-- <route url="/V1/nacento-connector/test" method="GET">
         <service class="Nacento\Connector\Api\CustomGalleryManagementInterface" method="test"/>
         <!-- Per fer la prova més fàcil, fem que sigui accessible per a qualsevol (anònim) -->
         <resources>
             <resource ref="anonymous"/>
         </resources>
-    </route>
+    </route> -->
 
 </routes>
