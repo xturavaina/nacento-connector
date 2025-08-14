@@ -37,6 +37,34 @@ The goal is to **avoid Magento’s built-in image processing and copying**, ther
 
 ---
 
+
+## Prerequisite: configure remote storage (S3/R2/MinIO)
+
+For this module to work as intended, **Magento must be configured to use an S3‑compatible remote storage driver** in `app/etc/env.php`. Example (S3/MinIO/R2 compatible):
+
+```php
+'remote_storage' => [
+    'driver' => 'aws-s3',
+    'config' => [
+        'bucket' => 'catalog',
+        'region' => 'auto',
+        'endpoint' => 'https://S3.yourserverS3.com',
+        'use_path_style_endpoint' => true,
+        'bucket_endpoint' => false,
+        'credentials' => [
+            'key' => 'yourkey',
+            'secret' => 'yoursecret'
+        ]
+    ]
+],
+```
+
+Notes:
+- **MinIO** and **Cloudflare R2** are S3‑compatible; adjust `endpoint`, keep `use_path_style_endpoint: true` and `bucket_endpoint: false`.
+- For **R2**, a typical endpoint looks like: `https://<accountid>.r2.cloudflarestorage.com`; `region` can be `auto`.
+- After editing `env.php`, clear caches: `bin/magento cache:flush`.
+
+
 ## Requirements
 
 - Magento **2.4.8**  
@@ -102,7 +130,7 @@ Centralize storage details via env/config:
 A REST endpoint is exposed via `webapi.xml`. The **exact route** depends on your current mapping and interface. A typical pattern might look like:
 
 ```
-POST /rest/V1/nacento/connector/gallery/sync
+POST /rest/V1/nacento-connector/products/MY-SKU-123/media
 ```
 
 > Check `etc/webapi.xml` for the definitive path and service name.
@@ -114,14 +142,14 @@ POST /rest/V1/nacento/connector/gallery/sync
   "sku": "MY-SKU-123",
   "images": [
     {
-      "url": "https://cdn.example.com/bucket/path/to/image1.jpg",
+      "url": "bucket/path/to/image1.jpg",
       "label": "Front",
       "position": 1,
       "disabled": false,
       "roles": ["base", "small", "thumbnail"]
     },
     {
-      "url": "https://cdn.example.com/bucket/path/to/image2.jpg",
+      "url": "bucket/path/to/image2.jpg",
       "label": "Angle",
       "position": 2,
       "disabled": false,
@@ -178,7 +206,7 @@ POST /rest/V1/nacento/connector/gallery/sync
 
 ## Security
 
-If you discover a security issue, **do not** open a public issue. Please contact the maintainer privately.
+If you discover a security issue, if you don't mind **DO NOT** open a public issue. Please contact me privately.
 
 ---
 
