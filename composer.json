@@ -1,0 +1,23 @@
+{
+  "name": "nacento/connector",
+  "description": "R2/S3 akeneo/magento shared images connector",
+  "type": "magento2-module",
+  "license": "MIT",
+  "authors": [
+    { "name": "Nacento", "email": "xtura.vaina@gmail.com" }
+  ],
+  "require": {
+    "php": "^8.1 || ^8.2",
+    "magento/framework": "^103.0"
+  },
+  "autoload": {
+    "files": [
+      "registration.php"
+    ],
+    "psr-4": {
+      "Nacento\\Connector\\": ""
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

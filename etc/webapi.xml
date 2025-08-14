@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+
+    <!-- RUTA POST ORIGINAL -->
+    <route url="/V1/nacento-connector/products/:sku/media" method="POST">
+        <service class="Nacento\Connector\Api\CustomGalleryManagementInterface" method="create"/>
+        <resources>
+            <resource ref="Magento_Catalog::products"/>
+        </resources>
+    </route>
+
+    <!-- RUTA GET DE TEST -->
+    <route url="/V1/nacento-connector/test" method="GET">
+        <service class="Nacento\Connector\Api\CustomGalleryManagementInterface" method="test"/>
+        <!-- Per fer la prova més fàcil, fem que sigui accessible per a qualsevol (anònim) -->
+        <resources>
+            <resource ref="anonymous"/>
+        </resources>
+    </route>
+
+</routes>
