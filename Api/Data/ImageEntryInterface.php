@@ -7,39 +7,76 @@ declare(strict_types=1);
 namespace Nacento\Connector\Api\Data;
 
 /**
- * Interface for media gallery entry data.
+ * Represents a single image entry within a product's media gallery.
  * @api
  */
 interface ImageEntryInterface
 {
+    /** Constants for data array keys. */
     public const FILE_PATH = 'file_path';
     public const LABEL = 'label';
     public const DISABLED = 'disabled';
     public const POSITION = 'position';
     public const ROLES = 'roles';
 
-    /** @return string */
+    /**
+     * Retrieves the path to the image file.
+     * This can be a local path or a remote URL.
+     * @return string
+     */
     public function getFilePath(): string;
-    /** @param string $filePath @return $this */
+    /**
+     * Sets the path for the image file.
+     * @param string $filePath The file path or URL.
+     * @return $this
+     */
     public function setFilePath(string $filePath): self;
 
-    /** @return string */
+    /**
+     * Gets the descriptive label for the image (often used as alt text).
+     * @return string
+     */
     public function getLabel(): string;
-    /** @param string $label @return $this */
+    /**
+     * Sets the descriptive label for the image.
+     * @param string $label The image label.
+     * @return $this
+     */
     public function setLabel(string $label): self;
     
-    /** @return bool */
+    /**
+     * Checks if the image is disabled (hidden from the frontend).
+     * @return bool
+     */
     public function isDisabled(): bool;
-    /** @param bool $disabled @return $this */
+    /**
+     * Sets the disabled status of the image.
+     * @param bool $disabled True to disable, false to enable.
+     * @return $this
+     */
     public function setDisabled(bool $disabled): self;
 
-    /** @return int */
+    /**
+     * Gets the sort order (position) of the image within the gallery.
+     * @return int
+     */
     public function getPosition(): int;
-    /** @param int $position @return $this */
+    /**
+     * Sets the sort order (position) of the image.
+     * @param int $position The position index.
+     * @return $this
+     */
     public function setPosition(int $position): self;
 
-    /** @return string[] */
+    /**
+     * Gets the assigned roles for the image (e.g., 'image', 'small_image', 'thumbnail').
+     * @return string[]
+     */
     public function getRoles(): array;
-    /** @param string[] $roles @return $this */
+    /**
+     * Sets the roles for the image.
+     * @param string[] $roles An array of image roles.
+     * @return $this
+     */
     public function setRoles(array $roles): self;
 }

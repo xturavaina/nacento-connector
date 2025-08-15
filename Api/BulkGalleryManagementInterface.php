@@ -6,12 +6,17 @@ namespace Nacento\Connector\Api;
 use Nacento\Connector\Api\Data\BulkRequestInterface;
 use Nacento\Connector\Api\Data\BulkResultInterface;
 
+/**
+ * Interface for managing synchronous bulk gallery processing.
+ * @api
+ */
 interface BulkGalleryManagementInterface
 {
     /**
-     * Processa galeries d'imatges per múltiples SKU en una sola crida.
-     * @param BulkRequestInterface $request
-     * @return BulkResultInterface
+     * Processes image galleries for multiple SKUs in a single, synchronous call.
+     *
+     * @param BulkRequestInterface $request The bulk request containing all the items to be processed.
+     * @return BulkResultInterface The result of the bulk operation, including statistics and outcomes for each SKU.
      */
     public function process(BulkRequestInterface $request): BulkResultInterface;
 }

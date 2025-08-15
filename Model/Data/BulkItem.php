@@ -6,11 +6,41 @@ namespace Nacento\Connector\Model\Data;
 use Magento\Framework\DataObject;
 use Nacento\Connector\Api\Data\BulkItemInterface;
 
+/**
+ * Data model for a single item in a bulk request.
+ * @see \Nacento\Connector\Api\Data\BulkItemInterface
+ */
 class BulkItem extends DataObject implements BulkItemInterface
 {
-    public function getSku(): string { return (string)$this->getData('sku'); }
-    public function setSku(string $sku): self { return $this->setData('sku', $sku); }
+    /**
+     * {@inheritdoc}
+     */
+    public function getSku(): string
+    {
+        return (string)$this->getData('sku');
+    }
 
-    public function getImages(): array { return $this->getData('images') ?? []; }
-    public function setImages(array $images): self { return $this->setData('images', $images); }
+    /**
+     * {@inheritdoc}
+     */
+    public function setSku(string $sku): self
+    {
+        return $this->setData('sku', $sku);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getImages(): array
+    {
+        return $this->getData('images') ?? [];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setImages(array $images): self
+    {
+        return $this->setData('images', $images);
+    }
 }

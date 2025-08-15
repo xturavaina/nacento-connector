@@ -18,6 +18,10 @@ use Magento\Catalog\Model\Product\Media\Config as MediaConfig;
 use Magento\Catalog\Model\Product\Action as ProductAction;
 use Nacento\Connector\Model\S3HeadClient;
 
+/**
+ * The core service responsible for processing and persisting product gallery updates.
+ * This class acts as the "executing arm" for gallery management.
+ */
 class GalleryProcessor implements CustomGalleryManagementInterface
 {
     private $productRepository;
@@ -50,100 +54,95 @@ class GalleryProcessor implements CustomGalleryManagementInterface
     }
 
     /**
-     * @inheritdoc
-     */
-    /**
-     * Crea/actualitza entrades de galeria a partir de rutes de fitxer EXISTENTS dins /media,
-     * i desa l'ETag a una taula pròpia de metadades.
+     * Creates or updates gallery entries from PRE-EXISTING file paths within the /media directory,
+     * and saves the S3 ETag to a custom metadata table.
+     * {@inheritdoc}
      */
     public function create(string $sku, array $images): bool
     {
         $this->logger->info(sprintf(
-            '[NacentoConnector] Iniciant procés massiu (Via Directa BD) per a SKU: %s. %d imatges rebudes.',
+            '[NacentoConnector] Starting bulk process (Direct DB) for SKU: %s. %d images received.',
             $sku,
             count($images)
         ));
 
+        // Early exit if there are no images to process.
         if (empty($images)) {
-            $this->logger->warning('[NacentoConnector] L\'array d\'imatges està buit. No es fa res.');
+            $this->logger->warning('[NacentoConnector] The images array is empty. Nothing to do.');
             return true;
         }
 
         try {
-            // --- PAS 1: VERIFICACIONS INICIALS (fora del bucle per eficiència) ---
+            // --- STEP 1: INITIAL VERIFICATIONS (performed outside the loop for efficiency) ---
             $product          = $this->productRepository->get($sku);
             $galleryAttribute = $this->productAttributeRepository->get('media_gallery');
             $mediaDirectory   = $this->filesystem->getDirectoryRead(DirectoryList::MEDIA);
             $rolesToUpdate    = [];
 
-            // *** OBTENIM EL DRIVER
+            // --- GET THE FILESYSTEM DRIVER (to check if we are on S3) ---
             $mediaDirectoryWriter = $this->filesystem->getDirectoryWrite(DirectoryList::MEDIA);
             /** @var \Magento\Framework\Filesystem\DriverInterface|\Magento\AwsS3\Driver\AwsS3 $mediaDriver */
             $mediaDriver = $mediaDirectoryWriter->getDriver();
 
-            // --- PAS 2: FOREACH PER A PROCESSAR CADA IMATGE ---
+            // --- STEP 2: LOOP THROUGH AND PROCESS EACH IMAGE ---
             foreach ($images as $imageEntry) {
-                // Obtenim i netegem les dades de l'objecte d'entrada
+                // Get and sanitize data from the input DTO.
                 $filePath = ltrim($imageEntry->getFilePath() ?? '', '/\\');
                 $label    = $imageEntry->getLabel() ?? '';
                 $disabled = $imageEntry->isDisabled();
                 $position = $imageEntry->getPosition();
                 $roles    = $imageEntry->getRoles() ?? [];
 
-                $this->logger->info(sprintf('[NacentoConnector] Processant imatge: %s', $filePath));
+                $this->logger->info(sprintf('[NacentoConnector] Processing image: %s', $filePath));
 
-                // 2a. Validacions de dades mínimes
+                // 2a. Validate that essential data is present.
                 if (empty($filePath) || empty($label)) {
-                    $this->logger->error('[NacentoConnector] Ometent imatge per filePath o label buits.');
+                    $this->logger->error('[NacentoConnector] Skipping image due to empty filePath or label.');
                     continue;
                 }
 
-                // 2b. Verificació d'existència del fitxer a /media
+                // 2b. Verify that the image file actually exists in the media directory.
                 $fullPathForValidation = $this->mediaConfig->getMediaPath($filePath);
                 if (!$mediaDirectory->isExist($fullPathForValidation)) {
                     $this->logger->error(sprintf(
-                        '[NacentoConnector] Ometent imatge. El fitxer no existeix a: %s',
+                        '[NacentoConnector] Skipping image. File does not exist at: %s',
                         $fullPathForValidation
                     ));
                     continue;
                 }
                 $this->logger->info(sprintf(
-                    '[NacentoConnector] ÈXIT: El fitxer %s s\'ha trobat correctament, obtenint obtenint ETag (HEAD S3/R2)',
+                    '[NacentoConnector] SUCCESS: File %s was found. Now getting ETag (HEAD S3/R2).',
                     $filePath
                 ));
 
-
-                // --- utilitat local per normalitzar ETag (treure cometes) ---
+                // --- Local utility to normalize the ETag (remove quotes) ---
                 $norm = static function ($e) {
                     return $e !== null ? trim((string)$e, '"') : null;
                 };
 
-                // Obtenir l’ETag directament via HEAD d’R2/S3 (1 sola crida)
-
+                // Get the current ETag directly via a HEAD request to S3/R2 (a single call).
                 $currentEtagNorm = null;
 
                 if ($mediaDriver instanceof \Magento\AwsS3\Driver\AwsS3) {
-                    // Media path relatiu (ex: "catalog/product/a/b/img.jpg")
+                    // Get the relative media path (e.g., "catalog/product/a/b/img.jpg").
                     $relative = $this->mediaConfig->getMediaPath($filePath);
-
-                    // Una sola crida HEAD a R2/S3
+                    // A single HEAD call to R2/S3.
                     $etag = $this->s3Head->getEtag($relative);
                     $currentEtagNorm = $etag ? $norm($etag) : null;
                 }
 
-                // 2c. Decidim si és INSERT o UPDATE (mirem si ja existeix la fila a la galeria)
+                // 2c. Decide whether to INSERT or UPDATE by checking if the image is already in the gallery.
                 $existingImage = $this->galleryResourceModel->getExistingImage(
                     (int)$product->getId(),
                     (int)$galleryAttribute->getAttributeId(),
                     $filePath
                 );
 
-
-                // L’ETag guardat si ja existia
+                // The ETag stored in our metadata table, if the image already existed.
                 $savedEtagNorm = isset($existingImage['s3_etag']) ? $norm($existingImage['s3_etag']) : null;
 
-                // Dades de la TAULA CORE que són comunes per a INSERT i UPDATE (NO inclouen s3_etag)
-                // hardcodejo store_id de moment
+                // Prepare the data for the CORE gallery table, common to both INSERT and UPDATE.
+                // Note: This does NOT include s3_etag. Store ID is currently hardcoded.
                 $valueData = [
                     'entity_id' => (int)$product->getId(),
                     'label'     => $label,
@@ -153,37 +152,37 @@ class GalleryProcessor implements CustomGalleryManagementInterface
                 ];
 
                 if ($existingImage && isset($existingImage['record_id'])) {
-                    // --- CAS A: L'IMATGE EXISTEIX -> ACTUALITZEM (core) + desar ETag (meta)
+                    // --- CASE A: IMAGE EXISTS -> UPDATE (core table) + UPSERT ETag (meta table) ---
                     $recordId = (int)$existingImage['record_id'];
                     $this->logger->info(sprintf(
-                        '[NacentoConnector] La imatge %s ja existeix. Actualitzant record_id: %d',
+                        '[NacentoConnector] Image %s already exists. Updating record_id: %d',
                         $filePath,
                         $recordId
                     ));
 
+                    // Log if the content has changed based on the ETag.
                     if ($currentEtagNorm !== $savedEtagNorm) {
                         $this->logger->info(sprintf(
-                            '[NacentoConnector] Canvi de contingut detectat per a %s (ETag %s → %s)',
+                            '[NacentoConnector] Content change detected for %s (ETag %s → %s)',
                             $filePath,
                             (string)$savedEtagNorm,
                             (string)$currentEtagNorm
                         ));
                     }
 
-                    // UPDATE a la taula core (label/position/disabled/store_id)
+                    // Perform the UPDATE on the core gallery value table (label/position/disabled).
                     $this->galleryResourceModel->updateValueRecord($recordId, $valueData);
-
-                    // UPSERT de l'ETag a la taula pròpia de metadades
+                    // Perform an UPSERT for the ETag in our custom metadata table.
                     $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
 
                 } else {
-                    // --- CAS B: L'IMATGE NO EXISTEIX -> INSERIM (core) + desar ETag (meta)
+                    // --- CASE B: IMAGE IS NEW -> INSERT (core tables) + UPSERT ETag (meta table) ---
                     $this->logger->info(sprintf(
-                        '[NacentoConnector] La imatge %s és nova. Inserint a la BD.',
+                        '[NacentoConnector] Image %s is new. Inserting into the database.',
                         $filePath
                     ));
 
-                    // Si l'entrada principal (main_table) no existeix, la creem i enllacem
+                    // If the main gallery entry (in `main_table`) doesn't exist, create and link it.
                     $valueIdToUse = $existingImage['value_id'] ?? null;
                     if (!$valueIdToUse) {
                         $newImageData = [
@@ -195,21 +194,20 @@ class GalleryProcessor implements CustomGalleryManagementInterface
                         $this->galleryResourceModel->createLink($valueIdToUse, (int)$product->getId());
                     }
 
-                    // Inserim la fila de "value" (store_id 0). IMPORTANT: el mètode ha de retornar el record_id.
+                    // Insert the value row (for store_id 0). It's crucial that this method returns the new `record_id`.
                     $valueData['value_id'] = $valueIdToUse;
                     $recordId = (int)$this->galleryResourceModel->insertValueRecord($valueData);
-
-                    // UPSERT de l'ETag a la taula pròpia de metadades
+                    // Perform an UPSERT for the ETag in our custom metadata table.
                     $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
 
                     $this->logger->info(sprintf(
-                        '[NacentoConnector] Imatge registrada a la BD amb value_id: %d i record_id: %d',
+                        '[NacentoConnector] Image registered in DB with value_id: %d and record_id: %d',
                         $valueIdToUse,
                         $recordId
                     ));
                 }
 
-                // 2d. Acumulem els rols per a actualitzar-los al final
+                // 2d. Accumulate all image roles to be updated in a single call later.
                 foreach ($roles as $role) {
                     if (!empty($role)) {
                         $rolesToUpdate[$role] = $filePath;
@@ -217,23 +215,23 @@ class GalleryProcessor implements CustomGalleryManagementInterface
                 }
             }
 
-            // --- PAS 3: GESTIÓ DE ROLS (Una única crida al final) ---
+            // --- STEP 3: ROLE MANAGEMENT (A single call at the end for performance) ---
             if (!empty($rolesToUpdate)) {
-                $this->logger->info('[NacentoConnector] Assignant/actualitzant tots els rols amb una única crida a ProductAction...');
+                $this->logger->info('[NacentoConnector] Assigning/updating all roles with a single ProductAction call...');
                 $this->productAction->updateAttributes([(int)$product->getId()], $rolesToUpdate, 0);
             }
 
-            // --- PAS 4: NETEJA DE CACHE ---
-            // em causa problemes i ProductAction ja invalida caches.
-            // un try-catch simplement evita un break del fluxe.
-            $this->logger->info('[NacentoConnector] ★★★ PROCÉS MASSIU (Directe a BD + Action) COMPLETAT AMB ÈXIT ★★★');
+            // --- STEP 4: CACHE CLEANING ---
+            // Cache invalidation is handled by ProductAction, so manual cleaning is not strictly necessary
+            // and can sometimes cause issues. A try-catch here prevents a process failure.
+            $this->logger->info('[NacentoConnector] ★★★ BULK PROCESS (Direct DB + Action) COMPLETED SUCCESSFULLY ★★★');
 
         } catch (\Exception $e) {
             $this->logger->critical(
-                '[NacentoConnector] Excepció crítica durant el procés massiu: ' . $e->getMessage(),
+                '[NacentoConnector] Critical exception during bulk process: ' . $e->getMessage(),
                 ['exception' => $e]
             );
-            throw new CouldNotSaveException(__("Error crític durant el procés massiu. Revisa els logs."), $e);
+            throw new CouldNotSaveException(__("A critical error occurred during the bulk process. Please review the logs."), $e);
         }
 
         return true;

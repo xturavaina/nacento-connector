@@ -2,15 +2,15 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
-    <!-- Contracte del servei WebAPI -->
+    <!-- Service contract for the single SKU WebAPI endpoint -->
     <preference for="Nacento\Connector\Api\CustomGalleryManagementInterface"
                 type="Nacento\Connector\Model\GalleryProcessor"/>
     
-    <!-- DTO del payload d’imatges -->
+    <!-- DTO for the image payload -->
     <preference for="Nacento\Connector\Api\Data\ImageEntryInterface"
                 type="Nacento\Connector\Model\Data\ImageEntry"/>
 
-    <!-- endpoint bulk -->
+    <!-- Service contracts and DTOs for the bulk processing endpoints -->
     <preference for="Nacento\Connector\Api\BulkGalleryManagementInterface"
                 type="Nacento\Connector\Model\GalleryProcessorBulk"/>
 
@@ -32,11 +32,11 @@
     <preference for="Nacento\Connector\Api\Data\ImageStatsInterface"
                 type="Nacento\Connector\Model\Data\ImageStats"/>
 
-    <!-- Planner -->
+    <!-- Service contract for the asynchronous bulk gallery planner -->
     <preference for="Nacento\Connector\Api\BulkGalleryAsyncManagementInterface"
                 type="Nacento\Connector\Model\BulkGalleryAsyncManagement"/>
 
-    <!-- Missatge del topic -->
+    <!-- DTO for the asynchronous processing message topic -->
     <preference for="Nacento\Connector\Api\Data\ProcessGalleryMessageInterface"
                 type="Nacento\Connector\Model\Data\ProcessGalleryMessage"/>
     

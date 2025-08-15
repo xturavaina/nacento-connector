@@ -10,7 +10,9 @@ use Magento\Framework\DataObject;
 use Nacento\Connector\Api\Data\ImageEntryInterface;
 
 /**
- * Data model for media gallery entry.
+ * Data model for a media gallery entry.
+ * Implements the ImageEntryInterface to provide structured data access for image properties.
+ * @see \Nacento\Connector\Api\Data\ImageEntryInterface
  */
 class ImageEntry extends DataObject implements ImageEntryInterface
 {

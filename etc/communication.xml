@@ -4,4 +4,3 @@
   <topic name="nacento.gallery.process"
          request="Magento\AsynchronousOperations\Api\Data\OperationInterface"/>
 </config>
-

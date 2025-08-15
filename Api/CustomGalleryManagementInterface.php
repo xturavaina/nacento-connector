@@ -8,6 +8,10 @@ namespace Nacento\Connector\Api;
 
 use Nacento\Connector\Api\Data\ImageEntryInterface;
 
+/**
+ * Provides a service contract for managing a product's image gallery on a per-SKU basis.
+ * @api
+ */
 interface CustomGalleryManagementInterface
 {
     /**

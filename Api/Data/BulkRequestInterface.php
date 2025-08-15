@@ -4,33 +4,37 @@ declare(strict_types=1);
 namespace Nacento\Connector\Api\Data;
 
 /**
- * Petició bulk de galeries.
+ * Represents a bulk request for galleries.
  * @api
  */
 interface BulkRequestInterface
 {
     /**
-     * Id opcional per idempotència/correlació.
+     * Optional ID for idempotency or correlation purposes.
      *
      * @return string|null
      */
     public function getRequestId(): ?string;
 
     /**
-     * @param string|null $requestId
+     * Sets the optional request ID.
+     *
+     * @param string|null $requestId The request ID.
      * @return $this
      */
     public function setRequestId(?string $requestId);
 
     /**
-     * Items a processar.
+     * Retrieves the items to be processed in this bulk request.
      *
      * @return \Nacento\Connector\Api\Data\BulkItemInterface[]
      */
     public function getItems(): array;
 
     /**
-     * @param \Nacento\Connector\Api\Data\BulkItemInterface[] $items
+     * Sets the items for this bulk request.
+     *
+     * @param \Nacento\Connector\Api\Data\BulkItemInterface[] $items The array of items to process.
      * @return $this
      */
     public function setItems(array $items);
