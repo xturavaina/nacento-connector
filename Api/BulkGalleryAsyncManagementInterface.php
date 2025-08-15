@@ -1,14 +1,22 @@
 <?php
 declare(strict_types=1);
+
 namespace Nacento\Connector\Api;
 
 use Nacento\Connector\Api\Data\BulkRequestInterface;
+use Magento\AsynchronousOperations\Api\Data\AsyncResponseInterface;
 
+/**
+ * Planner de processats bulk de galeries (async).
+ * @api
+ */
 interface BulkGalleryAsyncManagementInterface
 {
     /**
-     * Planifica el processat bulk i retorna el bulk_uuid.
-     * @return array {bulk_uuid: string, scheduled: int, request_id?: string}
+     * Planifica el lot i retorna la resposta async “oficial” (bulk_uuid + items).
+     *
+     * @param BulkRequestInterface $request
+     * @return \Magento\AsynchronousOperations\Api\Data\AsyncResponseInterface
      */
-    public function submit(BulkRequestInterface $request);
+    public function submit(BulkRequestInterface $request): AsyncResponseInterface;
 }

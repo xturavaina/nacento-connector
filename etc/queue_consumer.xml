@@ -5,6 +5,5 @@
             queue="nacento.gallery.process"
             connection="amqp"
             handler="Nacento\Connector\Model\Queue\GalleryConsumer::process"
-            maxMessages="100"
-            consumers="3"/>
+            maxMessages="100"/>
 </config>
