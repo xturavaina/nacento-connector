@@ -4,6 +4,7 @@
     <module name="Nacento_Connector">
         <sequence>
             <module name="Magento_Catalog"/>
+            <module name="Magento_Amqp"/>
         </sequence>
     </module>
 </config>
