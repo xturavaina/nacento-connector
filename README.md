@@ -86,7 +86,7 @@ Add the repository to your Magento project's `composer.json`:
 Then, install and enable the module:
 
 ```bash
-composer require nacento/connector:dev-main
+composer require nacento/connector:*
 bin/magento module:enable Nacento_Connector
 bin/magento setup:upgrade
 bin/magento cache:flush
