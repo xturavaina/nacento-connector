@@ -92,8 +92,55 @@ bin/magento setup:upgrade
 bin/magento cache:flush
 ```
 
+## Uninstallation
+
+You can uninstall the module in two ways: removing only the code (leaving the database table intact) or performing a complete removal that also cleans up the database.
+
+### Option 1: Remove Code Only (Standard Method)
+
+This is the standard Magento process. It will remove the module's code, but the `nacento_media_gallery_meta` database table will be preserved in case you decide to reinstall the module later or you forgot to make a backup.
+
+```bash
+composer remove nacento/connector
+bin/magento setup:upgrade
+```
+
 ---
 
+### Option 2: Complete Removal (Code + Database Table + RabbitMQ queue and Exchange)
+
+> **Warning:** This process is irreversible and will permanently delete the `nacento_media_gallery_meta` table and all its data.
+
+This module includes an uninstall script that cleans up its database schema. To trigger it, use Magento's `module:uninstall` command with the `--remove-data` flag. This command will:
+1.  Execute the uninstall script to drop the database table.
+2.  Remove the module's code.
+3.  Check if the nacento.gallery.process queue and exchange are empty.
+4.  If empty queue is confirmed, nacento.gallery.process and the exchange will be deleted.
+5.  If one or more messages are found, the script will abort the process and manual cleanup should be executed. 
+6.  Finally, update the `composer.json` and `composer.lock` files.
+
+```bash
+bin/magento module:uninstall Nacento_Connector --remove-data
+```
+
+---
+
+### Cleaning Up RabbitMQ (Manual Step)
+
+If queue was not deleted you can remove queues or exchanges from your RabbitMQ server. This must be done manually to ensure a completely clean environment.
+
+Follow these steps after uninstalling the module:
+```
+1.  Log in to the RabbitMQ Management UI (typically at `http://your-server:15672`).
+2.  Navigate to the **Queues** tab.
+3.  Find and click on the queue named `nacento.gallery.process`.
+4.  Scroll to the bottom of the page and click the **Delete** button.
+5.  Navigate to the **Exchanges** tab.
+6.  Find and click on the exchange named `nacento.gallery.process`.
+7.  Scroll to the bottom of the page and click the **Delete** button.
+```
+
+---
 ## API Endpoints
 
 The module exposes three distinct endpoints. Please check `etc/webapi.xml` for the definitive definitions.
