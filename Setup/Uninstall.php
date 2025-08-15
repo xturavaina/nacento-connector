@@ -9,6 +9,13 @@ use Magento\Framework\Setup\SchemaSetupInterface;
 use Magento\Framework\Setup\UninstallInterface;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 
+
+use Magento\Framework\Amqp\ConfigPool;
+use Magento\Framework\Amqp\Config as AmqpConfig;
+use Magento\Framework\Amqp\Connection\Factory as AmqpConnectionFactory;
+use Magento\Framework\Amqp\Connection\FactoryOptions;
+
+
 // Note: We do not use constructor injection here because this script runs
 // in a limited 'setup' context where not all services are available via DI.
 class Uninstall implements UninstallInterface
@@ -46,47 +53,60 @@ class Uninstall implements UninstallInterface
         $channel = null;
 
         try {
-            // We get the ConnectionPool via the ObjectManager, which is the correct
-            // practice inside Setup scripts.
-            $objectManager = ObjectManager::getInstance();
-            /** @var \Magento\Framework\Amqp\ConnectionPool $connectionPool */
-            $connectionPool = $objectManager->get(\Magento\Framework\Amqp\ConnectionPool::class);
-            
-            $connection = $connectionPool->getConnection('amqp');
+            $om = ObjectManager::getInstance();
+
+            /** @var ConfigPool $configPool */
+            $configPool = $om->get(ConfigPool::class);
+            /** @var AmqpConnectionFactory $factory */
+            $factory = $om->get(AmqpConnectionFactory::class);
+
+            /** @var AmqpConfig $config */
+            $config = $configPool->get('amqp');
+
+            // Construïm FactoryOptions a partir de la Config
+            $options = new FactoryOptions();
+            $options->setHost((string)$config->getValue(AmqpConfig::HOST));
+            $options->setPort((string)$config->getValue(AmqpConfig::PORT));
+            $options->setUsername((string)$config->getValue(AmqpConfig::USERNAME));
+            $options->setPassword((string)$config->getValue(AmqpConfig::PASSWORD));
+            $options->setVirtualHost((string)$config->getValue(AmqpConfig::VIRTUALHOST) ?: '/');
+            $options->setSslEnabled((bool)$config->getValue(AmqpConfig::SSL));
+            $sslOptions = $config->getValue(AmqpConfig::SSL_OPTIONS);
+            if (is_array($sslOptions)) {
+                $options->setSslOptions($sslOptions);
+            }
+
+            $connection = $factory->create($options);
             $channel = $connection->channel();
-            
-            // Step 1: Passively check the queue status
+
+            // Comprovació passiva de la cua (no la crea si no existeix)
+            // Retorna [queueName, messageCount, consumerCount]
             $queueStatus = $channel->queue_declare(self::QUEUE_NAME, true);
-            
-            if (isset($queueStatus[1]) && $queueStatus[1] > 0) {
-                $messageCount = $queueStatus[1];
+
+            $messageCount = is_array($queueStatus) && isset($queueStatus[1]) ? (int)$queueStatus[1] : 0;
+            if ($messageCount > 0) {
                 $logger->warning(
-                    '[NacentoConnector] Uninstall: RabbitMQ queue "' . self::QUEUE_NAME . '" was NOT deleted because it contains ' .
-                    $messageCount . ' pending message(s). Please purge the queue manually and run uninstall again.'
+                    '[NacentoConnector] Uninstall: RabbitMQ queue "' . self::QUEUE_NAME .
+                    '" NO s\'ha esborrat perquè té ' . $messageCount . ' missatge(s) pendent(s).'
                 );
                 return;
             }
 
-            // Step 2: If the queue is empty, delete it
+            // Esborra la cua (si existeix i està buida) i després l'exchange
             $channel->queue_delete(self::QUEUE_NAME);
-            $logger->info('[NacentoConnector] Uninstall: RabbitMQ queue "' . self::QUEUE_NAME . '" was empty and has been deleted.');
-            
+            $logger->info('[NacentoConnector] Uninstall: Queue "' . self::QUEUE_NAME . '" esborrada.');
+
             $channel->exchange_delete(self::EXCHANGE_NAME);
-            $logger->info('[NacentoConnector] Uninstall: RabbitMQ exchange "' . self::EXCHANGE_NAME . '" has been deleted.');
+            $logger->info('[NacentoConnector] Uninstall: Exchange "' . self::EXCHANGE_NAME . '" esborrat.');
 
         } catch (AMQPProtocolChannelException $e) {
             if ($e->getCode() === 404) {
-                $logger->info('[NacentoConnector] Uninstall: RabbitMQ queue "' . self::QUEUE_NAME . '" did not exist. No action taken.');
+                $logger->info('[NacentoConnector] Uninstall: Queue/exchange inexistent. Cap acció.');
             } else {
-                 $logger->error(
-                    '[NacentoConnector] Uninstall: A protocol error occurred while cleaning up RabbitMQ. Error: ' . $e->getMessage()
-                );
+                $logger->error('[NacentoConnector] Uninstall: Error de protocol AMQP: ' . $e->getMessage());
             }
         } catch (\Throwable $e) {
-            $logger->error(
-                '[NacentoConnector] Uninstall: A general error occurred while connecting to RabbitMQ. ' .
-                'Please clean up resources manually. Error: ' . $e->getMessage()
-            );
+            $logger->error('[NacentoConnector] Uninstall: Error general netejant RabbitMQ: ' . $e->getMessage());
         } finally {
             if ($channel && $channel->is_open()) {
                 $channel->close();
