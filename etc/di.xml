@@ -32,4 +32,12 @@
     <preference for="Nacento\Connector\Api\Data\ImageStatsInterface"
                 type="Nacento\Connector\Model\Data\ImageStats"/>
 
+    <!-- Planner -->
+    <preference for="Nacento\Connector\Api\BulkGalleryAsyncManagementInterface"
+                type="Nacento\Connector\Model\BulkGalleryAsyncManagement"/>
+
+    <!-- Missatge del topic -->
+    <preference for="Nacento\Connector\Api\Data\ProcessGalleryMessageInterface"
+                type="Nacento\Connector\Model\Data\ProcessGalleryMessage"/>
+    
 </config>
