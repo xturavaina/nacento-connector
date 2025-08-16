@@ -1,27 +1,38 @@
 <?xml version="1.0"?>
-<!-- File: etc/adminhtml/system.xml -->
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
-    <system>
-        <section id="nacento_connector" translate="label" sortOrder="910" showInDefault="1" showInWebsite="1" showInStore="1">
-            <label>Nacento Connector</label>
-            <tab>advanced</tab>
+  <system>
 
-            <group id="mq" translate="label" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
-                <label>Message Queue</label>
-                <field id="topic" translate="label" type="text" sortOrder="10" showInDefault="1">
-                    <label>Topic name</label>
-                    <comment>Leave empty to use internal default: "nacento.gallery.process".</comment>
-                </field>
-            </group>
+    <!-- New tab “Nacento” -->
+    <tab id="nacento" translate="label" sortOrder="880">
+      <label>Nacento</label>
+    </tab>
 
-            <group id="s3" translate="label" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
-                <label>S3/R2</label>
-                <field id="ping_object_key" translate="label" type="text" sortOrder="10" showInDefault="1">
-                    <label>Ping object key (optional)</label>
-                    <comment>If set, health check will HEAD this object to validate connectivity.</comment>
-                </field>
-            </group>
-        </section>
-    </system>
+    <!-- Nacento Section -->
+    <section id="nacento_connector"
+             translate="label"
+             sortOrder="10"
+             showInDefault="1" showInWebsite="1" showInStore="1">
+      <label>Nacento Connector</label>
+      <tab>nacento</tab>
+      <resource>Nacento_Connector::config</resource>
+
+      <group id="mq" translate="label" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+        <label>Message Queue</label>
+        <field id="topic" translate="label" type="text" sortOrder="10" showInDefault="1">
+          <label>Topic name</label>
+          <comment>Leave empty to use internal default: "nacento.gallery.process".</comment>
+        </field>
+      </group>
+
+      <group id="s3" translate="label" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+        <label>S3/R2 HealthCheck conf</label>
+        <field id="ping_object_key" translate="label" type="text" sortOrder="10" showInDefault="1">
+          <label>Ping object key (optional)</label>
+          <comment>If set, health check will HEAD this object to validate connectivity.</comment>
+        </field>
+      </group>
+    </section>
+
+  </system>
 </config>

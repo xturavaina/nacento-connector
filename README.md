@@ -27,7 +27,7 @@ This module has evolved from a simple single-SKU endpoint into a more comprehens
 ## Status
 
 - **Stage:** Alpha (breaking changes can happen anytime)
-- **Target Magento:** 2.4.8 (PHP 8.1/8.2)
+- **Target Magento:** 2.4.8 (PHP 8.1/8.2/8.3)
 - **License:** MIT
 
 ---
@@ -157,6 +157,47 @@ Follow these steps after uninstalling the module:
 ```
 
 ---
+
+## HealthCheck Diagnostics Configuration (Admin)
+
+Go to **Stores → Configuration → Nacento → Nacento Connector**:
+
+- **Message Queue → Topic name** (optional): if empty, defaults to `nacento.gallery.process`.
+- **S3/R2 → Ping object key (optional)**: if set, the health check will `HEAD` this object to validate connectivity.
+
+> The actual S3/R2 **remote storage driver** and credentials still live in `app/etc/env.php` (`remote_storage` section). This page only adds optional diagnostics/config.
+
+---
+
+## Health check / Doctor (CLI)
+
+Run a full diagnostic (DB, remote storage config, MQ mapping, optional publish):
+
+```bash
+bin/magento nacento:connector:doctor
+```
+---
+
+## Message Queue & Consumers
+
+This module uses a topic named **`nacento.gallery.process`** (publisher) and a consumer named **`nacento.gallery.consumer`** (listens to queue `nacento.gallery.process`).
+
+Common commands:
+```bash
+# see all consumers
+
+bin/magento queue:consumers:list
+```
+
+```bash
+# start the connector consumer
+
+bin/magento queue:consumers:start nacento.gallery.process -vvv
+```
+
+Publishing does not require a running consumer; messages will queue up and be processed when the consumer runs.
+
+--- 
 ## API Endpoints
 
 The module exposes three distinct endpoints. Please check `etc/webapi.xml` for the definitive definitions.
@@ -255,7 +296,19 @@ Submits a batch to Magento's message queue for background processing. The respon
 
 ---
 
+## Troubleshooting
+
+- **“Data in topic must be of type OperationInterface”**  
+  Your topic is typed (Async/Bulk). The module publishes a valid `OperationInterface`, so this should only happen if custom topology overrides were installed. Re-run `bin/magento setup:upgrade`.
+
+- **No messages seen in RabbitMQ logs**  
+  Magento validates message type & mapping **before** connecting to AMQP. Run the doctor and check `topic_mapping` and `mq_publish`.
+
+- **Admin config page not visible**  
+  Clear cache and re-login. Ensure `etc/adminhtml/system.xml` and `etc/acl.xml` are present (see repo), and the section appears under **Nacento → Nacento Connector**.
+
+
+---
 ## License
 
 **MIT © Nacento**
-```

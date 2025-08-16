@@ -49,5 +49,14 @@
             </argument>
         </arguments>
     </type>
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="nacento_connector_doctor" xsi:type="object">
+                    Nacento\Connector\Console\Command\DoctorCommand
+                </item>
+            </argument>
+        </arguments>
+    </type>
 
 </config>
