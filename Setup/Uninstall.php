@@ -8,8 +8,6 @@ use Magento\Framework\Setup\ModuleContextInterface;
 use Magento\Framework\Setup\SchemaSetupInterface;
 use Magento\Framework\Setup\UninstallInterface;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
-
-
 use Magento\Framework\Amqp\ConfigPool;
 use Magento\Framework\Amqp\Config as AmqpConfig;
 use Magento\Framework\Amqp\Connection\Factory as AmqpConnectionFactory;

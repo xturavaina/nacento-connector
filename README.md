@@ -48,6 +48,22 @@ This module has evolved from a simple single-SKU endpoint into a more comprehens
 
 ---
 
+## Compatibility (Tested)
+
+This module has been **only tested** under the following environment:
+
+- **Magento Open Source:** 2.4.8
+- **PHP:** 8.3-fpm
+- **Web Server:** nginx 1.24
+- **Message Queue:** RabbitMQ 4.1
+- **Cache:** Valkey 8.1
+- **Database:** MariaDB 11.4
+- **Search Engine:** OpenSearch 2.12
+
+> ⚠️ Other versions of Magento, PHP, or related services **have not been tested**.  
+> Use in different environments at your own risk until broader compatibility is confirmed.
+
+---
 ## Prerequisite: Configure Remote Storage (S3/R2/MinIO)
 
 For this module to work as intended, **Magento must be configured to use an S3-compatible remote storage driver** in `app/etc/env.php`. Example (S3/MinIO/R2 compatible):
@@ -127,7 +143,7 @@ bin/magento module:uninstall Nacento_Connector --remove-data
 
 ### Cleaning Up RabbitMQ (Manual Step)
 
-If queue was not deleted you can remove queues or exchanges from your RabbitMQ server. This must be done manually to ensure a completely clean environment.
+If queue was not deleted, you can manually remove queues or exchanges from your RabbitMQ server. This must be done to ensure a completely clean environment.
 
 Follow these steps after uninstalling the module:
 ```
@@ -224,6 +240,7 @@ Submits a batch to Magento's message queue for background processing. The respon
 
 ## Caveats & Limitations
 
+- Code is ridiculously bad as I am, logic is pure improvitzation, no optimitzation nor process engineering has been done, except to fit my needs. Help on this is highly appreciated.
 - Assumes **S3/R2 URLs are directly consumable** by your frontend (CORS, CDN, permissions are your responsibility).
 - Some Magento features or 3rd-party modules may **expect images to exist physically in `pub/media`**. Validate compatibility.
 - Error handling and retries are **minimal** in the alpha stage.
@@ -232,10 +249,9 @@ Submits a batch to Magento's message queue for background processing. The respon
 
 ## Roadmap (subject to change)
 
-- [ ] Enhance the statistics returned in bulk processing results.
-- [ ] Add a CLI command for batch synchronization and testing.
+- [ ] Enhance the the bussiness logic, as of today, the bulk sync/async is invoking the single sku processing logic, LOL!
+- [ ] Enhance the statistics returned in bulk processing results. (maybe improve integration with magento default uuid)
 - [ ] Implement unit and integration tests.
-- [ ] Optional: Fallback to local media for admin previews.
 
 ---
 

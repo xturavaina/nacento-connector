@@ -5,7 +5,7 @@
     <!-- Service contract for the single SKU WebAPI endpoint -->
     <preference for="Nacento\Connector\Api\CustomGalleryManagementInterface"
                 type="Nacento\Connector\Model\GalleryProcessor"/>
-    
+
     <!-- DTO for the image payload -->
     <preference for="Nacento\Connector\Api\Data\ImageEntryInterface"
                 type="Nacento\Connector\Model\Data\ImageEntry"/>
@@ -25,10 +25,10 @@
 
     <preference for="Nacento\Connector\Api\Data\BulkSkuResultInterface"
                 type="Nacento\Connector\Model\Data\BulkSkuResult"/>
-    
+
     <preference for="Nacento\Connector\Api\Data\BulkStatsInterface"
                 type="Nacento\Connector\Model\Data\BulkStats"/>
-                
+
     <preference for="Nacento\Connector\Api\Data\ImageStatsInterface"
                 type="Nacento\Connector\Model\Data\ImageStats"/>
 
@@ -39,5 +39,15 @@
     <!-- DTO for the asynchronous processing message topic -->
     <preference for="Nacento\Connector\Api\Data\ProcessGalleryMessageInterface"
                 type="Nacento\Connector\Model\Data\ProcessGalleryMessage"/>
-    
+
+    <!-- Register console command: bin/magento nacento:connector:doctor -->
+    <type name="Symfony\Component\Console\Application">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="nacento_connector_doctor"
+                      xsi:type="object">Nacento\Connector\Console\Command\DoctorCommand</item>
+            </argument>
+        </arguments>
+    </type>
+
 </config>

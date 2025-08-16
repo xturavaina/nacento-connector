@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- File: etc/config.xml -->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <nacento_connector>
+            <mq>
+                <topic></topic>
+            </mq>
+            <s3>
+                <ping_object_key></ping_object_key>
+            </s3>
+        </nacento_connector>
+    </default>
+</config>
