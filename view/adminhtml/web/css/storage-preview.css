@@ -1,0 +1,23 @@
+/* keep the first column readable and aligned with Magento's admin table look */
+.nacento-preview-table th {
+  width: 220px;
+  white-space: nowrap;
+  vertical-align: top;
+  font-weight: 600;
+}
+.nacento-preview-table td { vertical-align: top; }
+
+/* if you want uniform fonts (no monospace look), uncomment the next line: */
+/* .nacento-preview-table code { font-family: inherit; background: transparent; } */
+
+/* long URLs/keys shouldn’t blow the cell width */
+.nacento-preview-table td code { word-break: break-all; }
+
+.nacento-hint { margin-top: 12px; }
+.nacento-note { margin-top: 6px; }
+.nacento-subnote { margin-top: 4px; color: #6f6f6f; }
+
+.nacento-prefix-input { display:flex; align-items:center; gap:.5rem; }
+.nacento-prefix { white-space:nowrap; color:#6f6f6f; }
+.nacento-prefix-input__field { flex:1; }
+

@@ -1,0 +1,63 @@
+<?php /** @var $block \Nacento\Connector\Block\Adminhtml\System\Config\Field\StoragePreview */?>
+
+<link rel="stylesheet" href="<?= $block->getViewFileUrl('Nacento_Connector::css/storage-preview.css') ?>" />
+
+<div class="nacento-storage-preview">
+  <div class="admin__table-wrapper">
+    <table class="admin__table-secondary nacento-preview-table">
+      <tbody>
+        <tr>
+          <th><?= $block->escapeHtml(__('Driver')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('driver')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('Bucket')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('bucket')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('Endpoint')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('endpoint')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('Key prefix (product)')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('keyPrefix')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('Example object key')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('exampleKey')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('URL (path-style)')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('urlPathStyle')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('URL (virtual-hosted)')) ?></th>
+          <td><code><?= $block->escapeHtml($block->getData('urlVhost')) ?></code></td>
+        </tr>
+        <tr>
+          <th><?= $block->escapeHtml(__('Effective URL')) ?></th>
+          <td>
+            <code><?= $block->escapeHtml($block->getData('urlEffective')) ?></code>
+            <div class="nacento-subnote">
+              <?= $block->escapeHtml(__('Using path-style addressing (recommended for R2/MinIO).')) ?>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="message message-notice nacento-hint">
+    <div>
+      <?= $block->escapeHtml(
+        __('Magento stores product images under pub/media/catalog/product. On S3 the object key is prefixed with media/, e.g. media/catalog/product/…')
+      ) ?>
+    </div>
+  </div>
+
+    <div>
+        <p class="note nacento-note">
+            <?= $block->escapeHtml(__('This is computed from app/etc/env.php; no credentials are shown.')) ?>
+        </p>
+    </div>
+</div>

@@ -38,37 +38,43 @@ class GalleryConsumer
     public function process(OperationInterface $operation): void
     {
         try {
-            // Retrieve and unserialize the message data from the operation.
+            // 1) Deserialitza
             $dataJson = (string)($operation->getSerializedData() ?? '');
             $data     = $dataJson !== '' ? $this->serializer->unserialize($dataJson) : [];
 
-            // Extract the SKU and the raw images array from the payload.
-            $sku     = (string)($data['sku'] ?? '');
-            $images  = (array)($data['images'] ?? []);
-
-            // Sanitize and convert the raw image data into a consistent array of DTOs.
-            $entries = $this->normalizeImages($images);
-
-            // A SKU is mandatory for processing; throw an error if it's missing.
-            if ($sku === '') {
-                throw new \RuntimeException('SKU is empty in the message payload');
+            // 2) Ignora healthchecks (ACK implícit retornant sense excepcions)
+            if (
+                ($data['type'] ?? '') === 'healthcheck'
+                || (string)$operation->getBulkUuid() === 'healthcheck'
+            ) {
+                $this->logger->info('[Nacento][GalleryConsumer] healthcheck message ignored', [
+                    'opId' => (string)$operation->getId(),
+                ]);
+                return; // <-- no retornis true, el mètode és void
             }
 
-            // Delegate the actual gallery creation/update logic to the processor service.
+            // 3) Procés “real”
+            $sku    = (string)($data['sku'] ?? '');
+            $images = (array)($data['images'] ?? []);
+
+            if ($sku === '') {
+                throw new \RuntimeException('SKU is empty in the message payload 2');
+            }
+
+            $entries = $this->normalizeImages($images);
             $this->processor->create($sku, $entries);
 
         } catch (\Throwable $e) {
-            // Log the error with useful context for debugging.
             $this->logger->error(sprintf(
                 '[Nacento][GalleryConsumer] opId=%s sku=%s error=%s',
                 (string)$operation->getId(),
                 $data['sku'] ?? 'NA',
                 $e->getMessage()
             ));
-            // Re-throwing the exception to mark the queue message as 'FAILED'.
-            throw $e;
+            throw $e; // excepció = NACK/FAILED
         }
     }
+
 
     /**
      * Normalizes a raw array of image data into a clean array of ImageEntryInterface objects.

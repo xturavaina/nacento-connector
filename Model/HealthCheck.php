@@ -18,6 +18,8 @@ use Magento\Framework\MessageQueue\Publisher\ConfigInterface as PublisherConfig;
 use Magento\Framework\MessageQueue\Consumer\ConfigInterface as ConsumerConfig;
 use Magento\Framework\Serialize\Serializer\Json as JsonSerializer;
 
+use Nacento\Connector\Model\Storage\KeyResolver;
+
 
 class HealthCheck
 {
@@ -32,7 +34,8 @@ class HealthCheck
         private LoggerInterface $logger,
         private \Nacento\Connector\Helper\Config $config,
         private OperationInterfaceFactory $operationFactory,
-        private Json $serializer
+        private Json $serializer,
+        private KeyResolver $keyResolver
     ) {}
 
     /**
@@ -109,41 +112,81 @@ class HealthCheck
     }
 
 
-    private function optionalS3HeadCheck(): void {
-        // Opcional i segur: només si l’admin defineix un objecte “ping”
-        $pingKey = $this->config->getS3PingObjectKey();
-        if ($pingKey === '') {
+    private function optionalS3HeadCheck(): void
+    {
+        // 0) només si l’admin ha definit el “ping object”
+        $raw = (string)$this->config->getS3PingObjectKey();
+        if ($raw === '') {
             return;
         }
 
+        // 1) Normalitza a LMP (cua) i valida
+        $lmp = $this->keyResolver->toLmp($raw);
+        if ($lmp === '') {
+            return; // res a comprovar
+        }
+        // validació bàsica contra path traversal
+        if (str_contains($lmp, '..')) {
+            throw new \Magento\Framework\Exception\LocalizedException(
+                __('Invalid ping key: path traversal not allowed.')
+            );
+        }
+
+        // 2) Construeix la clau d’S3: "media/catalog/product/<tail>"
+        $objectKey = $this->keyResolver->lmpToObjectKey($lmp);
+
+        // 3) Llegeix config S3 abans del try (evita variables “possiblement no definides”)
+        /** @var array<string,mixed> $cfg */
+        $cfg = (array)($this->deploymentConfig->get('remote_storage/config') ?? []);
+        $bucket   = (string)($cfg['bucket']   ?? '');
+        $endpoint = (string)($cfg['endpoint'] ?? '');
+
         try {
-            // Reutilitza el client S3 si ja el tens al projecte. Exemple amb AWS SDK si està present:
-            // Nota: depèn de magento/module-aws-s3 i aws/aws-sdk-php presents a l'instal·lar Magento.
-            $cfg = (array)$this->deploymentConfig->get('remote_storage/config') ?: [];
             $client = new \Aws\S3\S3Client([
-                'version' => 'latest',
-                'region'  => $cfg['region']   ?? 'auto',
-                'endpoint'=> $cfg['endpoint'] ?? null,
+                'version'                 => 'latest',
+                'region'                  => $cfg['region']   ?? 'auto',
+                'endpoint'                => $endpoint ?: null,
                 'use_path_style_endpoint' => (bool)($cfg['use_path_style_endpoint'] ?? true),
-                'credentials' => [
+                'credentials'             => [
                     'key'    => $cfg['credentials']['key']    ?? '',
                     'secret' => $cfg['credentials']['secret'] ?? '',
                 ],
-                // Evita intents de signar serveis desconeguts
-                'signature_version' => 'v4',
+                'signature_version'       => 'v4',
             ]);
 
-            $client->headObject([
-                'Bucket' => (string)$cfg['bucket'],
-                'Key'    => $pingKey,
+            // Log de diagnòstic un cop tot està definit
+            $this->logger->debug(sprintf(
+                '[Nacento][S3 HEAD] bucket=%s endpoint=%s raw=%s lmp=%s key=%s',
+                $bucket, $endpoint, $raw, $lmp, $objectKey
+            ));
+
+            $res = $client->headObject([
+                'Bucket' => $bucket,
+                'Key'    => $objectKey,
             ]);
+
+            $this->logger->debug(sprintf(
+                '[Nacento][S3 HEAD] ok etag=%s status=%s',
+                (string)($res['ETag'] ?? ''),
+                (string)($res['@metadata']['statusCode'] ?? '')
+            ));
         } catch (\Throwable $e) {
-            $this->logger->warning('[Nacento_Connector][S3 HEAD] failed: ' . $e->getMessage());
-            throw new LocalizedException(__('Nacento_Connector: S3/R2 not reachable or ping object missing.'));
+            $this->logger->warning(sprintf(
+                '[Nacento][S3 HEAD] failed (raw=%s, lmp=%s, key=%s, bucket=%s, endpoint=%s): %s',
+                $raw, $lmp, $objectKey, $bucket, $endpoint, $e->getMessage()
+            ));
+            throw new \Magento\Framework\Exception\LocalizedException(
+                __('Nacento_Connector: S3/R2 not reachable or ping object missing.')
+            );
         }
     }
 
-    private function mask(?string $v): ?string {
+
+    /**
+     * mask.
+     */
+    private function mask(?string $v): ?string 
+    {
         
     if ($v === null || $v === '') return $v;
     $len = strlen($v);
@@ -205,36 +248,75 @@ class HealthCheck
         if ($status !== 'ok') return $r;
 
         // 4) Optional S3 HEAD
-        $pingKey = $this->config->getS3PingObjectKey();
-        if ($pingKey !== '') {
-            $t0 = microtime(true);
-            if (!class_exists(\Aws\S3\S3Client::class)) {
-                $r->addCheck('s3_head', 'skipped', (microtime(true)-$t0)*1000, ['reason'=>'aws sdk not present']);
-            } else {
-                try {
-                    $client = new \Aws\S3\S3Client([
-                        'version'=>'latest',
-                        'region'=>$s3cfg['region'] ?? 'auto',
-                        'endpoint'=>$s3cfg['endpoint'] ?? null,
-                        'use_path_style_endpoint'=>(bool)($s3cfg['use_path_style_endpoint'] ?? true),
-                        'credentials'=>[
-                            'key'=>$s3cfg['credentials']['key'] ?? '',
-                            'secret'=>$s3cfg['credentials']['secret'] ?? '',
-                        ],
-                        'signature_version'=>'v4',
-                    ]);
-                    $res = $client->headObject(['Bucket'=>(string)$s3cfg['bucket'], 'Key'=>$pingKey]);
-                    $r->addCheck('s3_head', 'ok', (microtime(true)-$t0)*1000, [
-                        'key'=>$pingKey,
-                        'etag'=>$res['ETag'] ?? null,
-                        'statusCode'=>$res['@metadata']['statusCode'] ?? null,
-                    ]);
-                } catch (\Throwable $e) {
-                    $r->addCheck('s3_head', 'fail', (microtime(true)-$t0)*1000, ['key'=>$pingKey], $e->getMessage());
-                    return $r;
-                }
+        $t0 = microtime(true);
+        $raw = (string)$this->config->getS3PingObjectKey();
+
+        if ($raw === '') {
+            $r->addCheck('s3_head', 'skipped', (microtime(true)-$t0)*1000, ['reason' => 'no ping key configured']);
+        } elseif (!class_exists(\Aws\S3\S3Client::class)) {
+            $r->addCheck('s3_head', 'skipped', (microtime(true)-$t0)*1000, [
+                'reason' => 'aws sdk not present',
+                'raw'    => $raw,
+            ]);
+        } else {
+            try {
+                // Normalitza a LMP i construeix clau S3 "media/catalog/product/<lmp>"
+                $lmp = $this->keyResolver->toLmp($raw);
+
+                $objectKey = $this->keyResolver->lmpToObjectKey($lmp);
+
+                $cfg     = (array)($this->deploymentConfig->get('remote_storage/config') ?? []);
+                $bucket  = (string)($cfg['bucket']   ?? '');
+                $endpoint= (string)($cfg['endpoint'] ?? '');
+
+                $client = new \Aws\S3\S3Client([
+                    'version'                 => 'latest',
+                    'region'                  => $cfg['region']   ?? 'auto',
+                    'endpoint'                => $endpoint ?: null,
+                    'use_path_style_endpoint' => (bool)($cfg['use_path_style_endpoint'] ?? true),
+                    'credentials'             => [
+                        'key'    => $cfg['credentials']['key']    ?? '',
+                        'secret' => $cfg['credentials']['secret'] ?? '',
+                    ],
+                    'signature_version'       => 'v4',
+                ]);
+
+                // 🔊 logs de diagnòstic
+                $this->logger->debug(sprintf(
+                    '[Nacento][Doctor S3 HEAD] bucket=%s endpoint=%s raw=%s lmp=%s key=%s',
+                    $bucket, $endpoint, $raw, $lmp, $objectKey
+                ));
+
+                $res = $client->headObject([
+                    'Bucket' => $bucket,
+                    'Key'    => $objectKey,
+                ]);
+
+                $this->logger->debug(sprintf(
+                    '[Nacento][Doctor S3 HEAD] ok etag=%s status=%s',
+                    (string)($res['ETag'] ?? ''),
+                    (string)($res['@metadata']['statusCode'] ?? '')
+                ));
+
+                $r->addCheck('s3_head', 'ok', (microtime(true)-$t0)*1000, [
+                    'raw'        => $raw,
+                    'lmp'        => $lmp,
+                    'object_key' => $objectKey,
+                    'etag'       => $res['ETag'] ?? null,
+                    'statusCode' => $res['@metadata']['statusCode'] ?? null,
+                ]);
+            } catch (\Throwable $e) {
+                $this->logger->warning(sprintf(
+                    '[Nacento][Doctor S3 HEAD] failed (raw=%s): %s', $raw, $e->getMessage()
+                ));
+                $r->addCheck('s3_head', 'fail', (microtime(true)-$t0)*1000, [
+                    'raw'        => $raw,
+                ], $e->getMessage());
+                return $r;
             }
         }
+
+
 
         // 5) AMQP config presence
         $t0 = microtime(true);

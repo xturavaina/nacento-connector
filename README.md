@@ -61,7 +61,7 @@ This module has been **only tested** under the following environment:
 - **Search Engine:** OpenSearch 2.12
 
 > ⚠️ Other versions of Magento, PHP, or related services **have not been tested**.  
-> Use in different environments at your own risk until broader compatibility is confirmed.
+> Use in different environments **at your own risk**, in fact, use it in general at your own risk.
 
 ---
 ## Prerequisite: Configure Remote Storage (S3/R2/MinIO)
@@ -87,6 +87,37 @@ For this module to work as intended, **Magento must be configured to use an S3-c
 
 ---
 
+## S3 Bucket Layout & Paths (Required)
+
+Magento’s S3 storage driver treats the **bucket root as `pub/media`**.
+That means product images must live under:
+
+```text
+<bucket>/media/catalog/product/<files>
+```
+
+This module will not fight against this stablished behaviour so if you would like to use it, you should adapt your S3 configuration so both Magento and your PIM access the same path.
+
+Akeneo S3 adapter based on Symfony Framework can be configured by setting a **prefix**:
+
+```yaml
+oneup_flysystem:
+  adapters:
+    catalog_storage_adapter:
+      awss3v3:
+        client: 'Aws\S3\S3Client'
+        bucket: 'catalog'                 # your bucket name
+        prefix: 'media/catalog/product'   # required for Magento compatibility
+```
+
+With this, Akeneo will write to:
+
+```text
+<bucket>/media/catalog/product/<files>
+```
+
+---
+
 ## Installation
 
 Add the repository to your Magento project's `composer.json`:
@@ -108,9 +139,28 @@ bin/magento setup:upgrade
 bin/magento cache:flush
 ```
 
+
+
+> ⚠️ ***IMPORTANT***: For the bulk async operations to work you should setup a consumer on your cron, supervisord or whatever you use to process queues.
+
+A potenial minimalist entry for supervisord will look like:
+
+
+```yaml
+[program:magento-consumer-nacento-gallery]
+command=php bin/magento queue:consumers:start nacento.gallery.consumer 
+directory=/var/www/html
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/magento-consumers/consumer_nacento_gallery.log
+stderr_logfile=/var/log/magento-consumers/consumer_nacento_gallery.err
+```
+
+However, your environtment and settings may differ. Adapt accordingly.
+
 ## Uninstallation
 
-You can uninstall the module in two ways: removing only the code (leaving the database table intact) or performing a complete removal that also cleans up the database.
+You can uninstall the module in two ways: removing only the code (leaving the database table intact) or performing a complete removal that also cleans up the database, the queue and the exchange in RabbitMQ
 
 ### Option 1: Remove Code Only (Standard Method)
 
@@ -183,15 +233,15 @@ bin/magento nacento:connector:doctor
 This module uses a topic named **`nacento.gallery.process`** (publisher) and a consumer named **`nacento.gallery.consumer`** (listens to queue `nacento.gallery.process`).
 
 Common commands:
-```bash
-# see all consumers
 
+see all consumers
+```bash
 bin/magento queue:consumers:list
 ```
 
-```bash
-# start the connector consumer
+start the connector consumer
 
+```bash
 bin/magento queue:consumers:start nacento.gallery.process -vvv
 ```
 

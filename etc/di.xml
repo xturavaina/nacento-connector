@@ -49,6 +49,7 @@
             </argument>
         </arguments>
     </type>
+
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
             <argument name="commands" xsi:type="array">
@@ -58,5 +59,19 @@
             </argument>
         </arguments>
     </type>
+
+    <type name="Magento\Config\Controller\Adminhtml\System\Config\Save">
+        <plugin name="nacento_log_admin_save"
+                type="Nacento\Connector\Plugin\LogAdminSystemConfigSave"
+                sortOrder="1"/>
+    </type>
+    
+    <type name="Magento\Config\Model\Config">
+        <plugin name="nacento_log_config_model_save"
+                type="Nacento\Connector\Plugin\LogConfigModelSave"
+                sortOrder="1"/>
+    </type>
+
+
 
 </config>

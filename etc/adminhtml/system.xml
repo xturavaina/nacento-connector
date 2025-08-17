@@ -3,16 +3,16 @@
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
   <system>
 
-    <!-- New tab “Nacento” -->
+    <!-- Nacento tab -->
     <tab id="nacento" translate="label" sortOrder="880">
       <label>Nacento</label>
     </tab>
 
-    <!-- Nacento Section -->
+    <!-- nacento connector -->
     <section id="nacento_connector"
              translate="label"
              sortOrder="10"
-             showInDefault="1" showInWebsite="1" showInStore="1">
+             showInDefault="1" showInWebsite="0" showInStore="0">
       <label>Nacento Connector</label>
       <tab>nacento</tab>
       <resource>Nacento_Connector::config</resource>
@@ -21,16 +21,35 @@
         <label>Message Queue</label>
         <field id="topic" translate="label" type="text" sortOrder="10" showInDefault="1">
           <label>Topic name</label>
+          <backend_model>Nacento\Connector\Model\Config\Backend\Topic</backend_model>
           <comment>Leave empty to use internal default: "nacento.gallery.process".</comment>
         </field>
       </group>
 
       <group id="s3" translate="label" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
         <label>S3/R2 HealthCheck conf</label>
-        <field id="ping_object_key" translate="label" type="text" sortOrder="10" showInDefault="1">
-          <label>Ping object key (optional)</label>
-          <comment>If set, health check will HEAD this object to validate connectivity.</comment>
-        </field>
+          <field id="ping_object_key"
+                translate="label"
+                type="text"
+                sortOrder="10"
+                showInDefault="1"
+                showInWebsite="0"
+                showInStore="0">
+              <label>Ping object key</label>
+
+              <frontend_model>Nacento\Connector\Block\Adminhtml\System\Config\Field\PingKey</frontend_model>
+              <backend_model>Nacento\Connector\Model\Config\Backend\PingKey</backend_model>
+
+              <comment><![CDATA[
+                Enter only the tail inside <code>media/catalog/product/</code>.
+                Example: <code>m/y/my-image.jpg</code> or <code>0/0/0/0/abc.jpg</code>.
+              ]]></comment>
+          </field>
+
+          <field id="storage_preview" translate="label" type="note" sortOrder="5" showInDefault="1" showInWebsite="0" showInStore="0">
+            <label>Storage layout (read-only preview)</label>
+            <frontend_model>Nacento\Connector\Block\Adminhtml\System\Config\Field\StoragePreview</frontend_model>
+          </field>
       </group>
     </section>
 
