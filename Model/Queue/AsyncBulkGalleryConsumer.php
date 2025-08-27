@@ -7,7 +7,7 @@ use Magento\AsynchronousOperations\Api\Data\OperationInterface as AsyncOperation
 use Magento\Framework\Bulk\OperationInterface as BulkOperationInterface;
 use Magento\Framework\Bulk\OperationManagementInterface;
 use Magento\Framework\Serialize\SerializerInterface;
-use Nacento\Connector\Model\ResourceModel\Product\GalleryBulkAsync;
+use Nacento\Connector\Model\ResourceModel\Product\AsyncBulkGalleryProductProcessor;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -18,10 +18,10 @@ use Psr\Log\LoggerInterface;
  * - Uses the operation_key from the payload to update status.
  * - Works with the data from the OperationInterface provided by the message queue.
  */
-class GalleryConsumerBulkAsync
+class AsyncBulkGalleryConsumer
 {
     public function __construct(
-        private readonly GalleryBulkAsync $galleryProcessor,
+        private readonly AsyncBulkGalleryProductProcessor $galleryProcessor,
         private readonly SerializerInterface $serializer,
         private readonly LoggerInterface $logger,
         private readonly OperationManagementInterface $operationManagement,

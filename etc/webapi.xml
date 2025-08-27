@@ -5,7 +5,7 @@
     <!-- Asynchronous bulk endpoint for updating multiple product galleries -->
     
     <route url="/V1/nacento-connector/products/media/bulk/async" method="POST">
-        <service class="Nacento\Connector\Api\BulkGalleryAsyncManagementInterface" method="submit"/>
+        <service class="Nacento\Connector\Api\AsyncBulkGalleryManagementInterface" method="submit"/>
         <resources>
             <resource ref="Magento_Catalog::products"/>
         </resources>

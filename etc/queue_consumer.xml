@@ -4,7 +4,7 @@
     <consumer name="nacento.media-gallery.sync.sku"
               queue="nacento.media-gallery.sync.sku"
               connection="amqp"
-              handler="Nacento\Connector\Model\Queue\GalleryConsumerBulkAsync::process"
+              handler="Nacento\Connector\Model\Queue\AsyncBulkGalleryConsumer::process"
               consumerInstance="Magento\Framework\MessageQueue\Consumer"
               maxMessages="1000"
     />

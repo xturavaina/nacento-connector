@@ -22,7 +22,7 @@ use Nacento\Connector\Model\S3HeadClient;
  * - Uses a dedicated database transaction for the operation.
  * - Throws exceptions on failure, which are caught by the consumer.
  */
-class GalleryBulkAsync
+class AsyncBulkGalleryProductProcessor
 {
     public function __construct(
         private readonly ResourceConnection $resource,

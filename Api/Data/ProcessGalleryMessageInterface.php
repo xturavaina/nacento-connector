@@ -6,7 +6,7 @@ namespace Nacento\Connector\Api\Data;
  * Defines the message structure for processing a product gallery.
  * @api
  */
-interface ProcessGalleryMessageInterface
+interface AsyncBulkProcessGalleryMessageInterface
 {
     /**
      * Gets the product SKU associated with the gallery to be processed.

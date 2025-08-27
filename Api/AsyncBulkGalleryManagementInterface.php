@@ -13,7 +13,7 @@ use Magento\AsynchronousOperations\Api\Data\AsyncResponseInterface;
  * Interface for managing asynchronous bulk gallery processing.
  * @api
  */
-interface BulkGalleryAsyncManagementInterface
+interface AsyncBulkGalleryManagementInterface
 {
     /**
      * Submits a bulk gallery request for asynchronous processing.

@@ -3,13 +3,13 @@ declare(strict_types=1);
 namespace Nacento\Connector\Model\Data;
 
 use Magento\Framework\DataObject;
-use Nacento\Connector\Api\Data\ProcessGalleryMessageInterface;
+use Nacento\Connector\Api\Data\AsyncBulkProcessGalleryMessageInterface;
 
 /**
  * Data model for the asynchronous gallery processing message.
- * @see \Nacento\Connector\Api\Data\ProcessGalleryMessageInterface
+ * @see \Nacento\Connector\Api\Data\AsyncBulkProcessGalleryMessageInterface
  */
-class ProcessGalleryMessage extends DataObject implements ProcessGalleryMessageInterface
+class AsyncBulkProcessGalleryMessage extends DataObject implements AsyncBulkProcessGalleryMessageInterface
 {
     /**
      * {@inheritdoc}

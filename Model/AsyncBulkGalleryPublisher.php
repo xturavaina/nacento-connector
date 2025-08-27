@@ -15,7 +15,7 @@ use Magento\AsynchronousOperations\Api\Data\AsyncResponseInterfaceFactory;
 use Magento\AsynchronousOperations\Api\Data\ItemStatusInterface;
 use Magento\AsynchronousOperations\Api\Data\ItemStatusInterfaceFactory;
 
-use Nacento\Connector\Api\BulkGalleryAsyncManagementInterface;
+use Nacento\Connector\Api\AsyncBulkGalleryManagementInterface;
 use Nacento\Connector\Api\Data\BulkRequestInterface;
 use Nacento\Connector\Api\Data\ImageEntryInterface;
 
@@ -28,7 +28,7 @@ use Magento\Framework\Exception\LocalizedException;
 /**
  * Asynchronous planner for gallery processing with "Replace per SKU" strategy.
  */
-class GalleryProcessorBulkAsync implements BulkGalleryAsyncManagementInterface
+class GalleryProcessorBulkAsync implements AsyncBulkGalleryManagementInterface
 {
     public function __construct(
         private readonly BulkManagementInterface $bulkManagement,
