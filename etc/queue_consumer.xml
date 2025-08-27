@@ -1,9 +1,11 @@
 <?xml version="1.0"?>
-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/consumers.xsd">
-  <consumer name="nacento.gallery.consumer"
-            queue="nacento.gallery.process"
-            connection="amqp"
-            handler="Nacento\Connector\Model\Queue\GalleryConsumer::process"
-            maxMessages="100"/>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue/etc/queue_consumer.xsd">
+
+    <consumer name="nacento.media-gallery.sync.sku"
+              queue="nacento.media-gallery.sync.sku"
+              connection="amqp"
+              handler="Nacento\Connector\Model\Queue\GalleryConsumerBulkAsync::process"
+              consumerInstance="Magento\Framework\MessageQueue\Consumer"
+              maxMessages="1000"
+    />
 </config>

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="urn:magento:framework:Communication/etc/communication.xsd">
-  <topic name="nacento.gallery.process"
-         request="Magento\AsynchronousOperations\Api\Data\OperationInterface"/>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Communication/etc/communication.xsd">
+    <topic name="nacento.media-gallery.sync.sku" request="Magento\AsynchronousOperations\Api\Data\OperationInterface">
+        <handler name="nacento.media-gallery.sync.sku.handler" type="Nacento\Connector\Model\Queue\GalleryConsumerBulkAsync" method="process"/>
+    </topic>
 </config>

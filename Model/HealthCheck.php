@@ -24,7 +24,7 @@ use Nacento\Connector\Model\Storage\KeyResolver;
 class HealthCheck
 {
     /** per defecte definim el topic, es pot configurar al backend */
-    public const DEFAULT_TOPIC = 'nacento.gallery.process';
+    public const DEFAULT_TOPIC = 'nacento.media-gallery.sync.sku';
 
     public function __construct(
         private DeploymentConfig $deploymentConfig,

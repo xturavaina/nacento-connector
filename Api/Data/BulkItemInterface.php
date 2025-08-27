@@ -6,7 +6,7 @@ namespace Nacento\Connector\Api\Data;
 /**
  * Represents a single item within a bulk request.
  *
- * This interface defines a data structure for an item that includes a product
+ * Defines a data structure for an item that includes a product
  * SKU and its corresponding image gallery.
  *
  * @api

@@ -5,6 +5,8 @@
         <sequence>
             <module name="Magento_Catalog"/>
             <module name="Magento_Amqp"/>
+            <module name="Message_Queue"/>
+            <module name="Magento_AsynchronousOperations"/>
         </sequence>
     </module>
 </config>

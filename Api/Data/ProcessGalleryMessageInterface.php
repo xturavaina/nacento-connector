@@ -4,7 +4,6 @@ namespace Nacento\Connector\Api\Data;
 
 /**
  * Defines the message structure for processing a product gallery.
- * This is typically used for asynchronous operations.
  * @api
  */
 interface ProcessGalleryMessageInterface

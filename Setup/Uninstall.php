@@ -18,8 +18,8 @@ use Magento\Framework\Amqp\Connection\FactoryOptions;
 // in a limited 'setup' context where not all services are available via DI.
 class Uninstall implements UninstallInterface
 {
-    private const QUEUE_NAME = 'nacento.gallery.process';
-    private const EXCHANGE_NAME = 'nacento.gallery.process';
+    private const QUEUE_NAME = 'nacento.media-gallery.sync.sku';
+    private const EXCHANGE_NAME = 'nacento.media-gallery.sync.sku';
 
     public function uninstall(SchemaSetupInterface $setup, ModuleContextInterface $context): void
     {

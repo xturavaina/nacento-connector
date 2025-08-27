@@ -1,6 +1,6 @@
 # Nacento Connector
 
-*A Magento 2.4.8 module to synchronize product image galleries from a PIM, using S3/R2 as the source of truth and optimizing performance through ETag change detection and bulk processing (synchronous & asynchronous).*
+*A Magento 2.4.8 module to synchronize product image galleries from a PIM, using S3/R2 as the source of truth and optimizing performance through ETag change detection and bulk processing (Async).*
 
 > **ALPHA – HIGHLY EXPERIMENTAL**  
 > This project is **alpha-stage** and **not suitable for production**. Use at your own risk.  
@@ -18,8 +18,8 @@ The primary goal is to **bypass Magento's native image processing and copying**,
 
 This module has evolved from a simple single-SKU endpoint into a more comprehensive bulk processing system focused on performance and flexibility.
 
-1.  **Bulk Processing:** In addition to the original single-product endpoint, the module now offers bulk endpoints to process hundreds or thousands of SKUs in a single request.
-2.  **Synchronous vs. Asynchronous:** You can choose between synchronous processing (the response waits for everything to complete) or asynchronous processing (the request is queued via Magento's Message Queue for background processing), which is ideal for very large workloads.
+1.  **Bulk Processing:** In evolution from the original single-product endpoint, the module now offers a bulk endpoint to process hundreds or thousands of SKUs in a single request.
+2.  **Synchronous vs. Asynchronous:** You can choose between synchronous processing (the response waits for everything to complete) or asynchronous processing (the request is queued via Magento's Message Queue for background processing), which is ideal for very large workloads. (Eliminated from master as not useful for me anymore)
 3.  **ETag Change Detection:** The module uses a lightweight S3 client to perform `HEAD` requests and retrieve the **ETag** of each image. This allows it to detect if a file's content has actually changed, avoiding unnecessary database writes and only updating metadata if the file itself is unchanged.
 
 ---
@@ -34,10 +34,8 @@ This module has evolved from a simple single-SKU endpoint into a more comprehens
 
 ## Features
 
-- **Three REST Web API Endpoints:**
-    - One for **single SKU** updates.
-    - One for **synchronous bulk** processing.
-    - One for **asynchronous bulk** processing via Magento's Message Queue.
+- **One REST Web API Endpoints:**
+    - **asynchronous bulk** processing via Magento's Message Queue.
 - **Performance Optimization:**
     - Skips Magento’s image processing for improved speed.
     - Uses a dedicated **S3/R2 client** for `HEAD` requests to check **ETags**, only updating data when necessary.
@@ -180,8 +178,8 @@ bin/magento setup:upgrade
 This module includes an uninstall script that cleans up its database schema. To trigger it, use Magento's `module:uninstall` command with the `--remove-data` flag. This command will:
 1.  Execute the uninstall script to drop the database table.
 2.  Remove the module's code.
-3.  Check if the nacento.gallery.process queue and exchange are empty.
-4.  If empty queue is confirmed, nacento.gallery.process and the exchange will be deleted.
+3.  Check if the nacento.media-gallery.sync.sku queue and exchange are empty.
+4.  If empty queue is confirmed, nacento.media-gallery.sync.sku and the exchange will be deleted.
 5.  If one or more messages are found, the script will abort the process and manual cleanup should be executed. 
 6.  Finally, update the `composer.json` and `composer.lock` files.
 
@@ -199,10 +197,10 @@ Follow these steps after uninstalling the module:
 ```
 1.  Log in to the RabbitMQ Management UI (typically at `http://your-server:15672`).
 2.  Navigate to the **Queues** tab.
-3.  Find and click on the queue named `nacento.gallery.process`.
+3.  Find and click on the queue named `nacento.media-gallery.sync.sku`.
 4.  Scroll to the bottom of the page and click the **Delete** button.
 5.  Navigate to the **Exchanges** tab.
-6.  Find and click on the exchange named `nacento.gallery.process`.
+6.  Find and click on the exchange named `nacento.media-gallery.sync.sku`.
 7.  Scroll to the bottom of the page and click the **Delete** button.
 ```
 
@@ -212,25 +210,16 @@ Follow these steps after uninstalling the module:
 
 Go to **Stores → Configuration → Nacento → Nacento Connector**:
 
-- **Message Queue → Topic name** (optional): if empty, defaults to `nacento.gallery.process`.
+- **Message Queue → Topic name** (optional): if empty, defaults to `nacento.media-gallery.sync.sku`.
 - **S3/R2 → Ping object key (optional)**: if set, the health check will `HEAD` this object to validate connectivity.
 
 > The actual S3/R2 **remote storage driver** and credentials still live in `app/etc/env.php` (`remote_storage` section). This page only adds optional diagnostics/config.
 
 ---
 
-## Health check / Doctor (CLI)
-
-Run a full diagnostic (DB, remote storage config, MQ mapping, optional publish):
-
-```bash
-bin/magento nacento:connector:doctor
-```
----
-
 ## Message Queue & Consumers
 
-This module uses a topic named **`nacento.gallery.process`** (publisher) and a consumer named **`nacento.gallery.consumer`** (listens to queue `nacento.gallery.process`).
+This module uses a topic named **`nacento.media-gallery.sync.sku`** (publisher) and a consumer named **`nacento.media-gallery.sync.sku`** (listens to queue `nacento.media-gallery.sync.sku`).
 
 Common commands:
 
@@ -242,7 +231,7 @@ bin/magento queue:consumers:list
 start the connector consumer
 
 ```bash
-bin/magento queue:consumers:start nacento.gallery.process -vvv
+bin/magento queue:consumers:start nacento.media-gallery.sync.sku -vvv
 ```
 
 Publishing does not require a running consumer; messages will queue up and be processed when the consumer runs.
@@ -250,34 +239,14 @@ Publishing does not require a running consumer; messages will queue up and be pr
 --- 
 ## API Endpoints
 
-The module exposes three distinct endpoints. Please check `etc/webapi.xml` for the definitive definitions.
+The module exposes distinct endpoints. Please check `etc/webapi.xml` for the definitive definitions.
 
-### 1. Single SKU Update (Synchronous)
 
-Ideal for one-off updates or testing.
+### Bulk Processing (Async)
 
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/:sku/media`
-- **Sample Payload:**
+Submits a batch to Magento's message queue for background processing. The response is immediate and contains a `bulk_uuid` for tracking.
 
-```json
-{
-  "images": [
-    {
-      "file_path": "catalog/product/m/y/my-image-1.jpg",
-      "label": "Front View",
-      "position": 1,
-      "disabled": false,
-      "roles": ["base", "small_image", "thumbnail"]
-    }
-  ]
-}
-```
-
-### 2. Bulk Processing (Synchronous)
-
-Processes a batch of SKUs and returns the full result in the response. Suitable for small to medium-sized batches.
-
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk`
+- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk/async`
 - **Sample Payload:**
 
 ```json
@@ -297,24 +266,7 @@ Processes a batch of SKUs and returns the full result in the response. Suitable 
   }
 }
 ```
-- **Sample Response:**
-```json
-{
-    "request_id": "op-12345",
-    "stats": { "skus_seen": 2, "ok": 2, "error": 0, "inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0 },
-    "results": [
-        { "sku": "SKU-001", "product_id": 10, "image_stats": {"inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0, "warnings": []}, "error": null },
-        { "sku": "SKU-002", "product_id": 11, "image_stats": {"inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0, "warnings": []}, "error": null }
-    ]
-}
-```
 
-### 3. Bulk Processing (Asynchronous)
-
-Submits a batch to Magento's message queue for background processing. The response is immediate and contains a `bulk_uuid` for tracking. This is the best option for large batches.
-
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk/async`
-- **Payload:** Same as the synchronous bulk endpoint.
 - **Sample Response:**
 ```json
 {
@@ -340,7 +292,7 @@ Submits a batch to Magento's message queue for background processing. The respon
 
 ## Roadmap (subject to change)
 
-- [ ] Enhance the the bussiness logic, as of today, the bulk sync/async is invoking the single sku processing logic, LOL!
+- [ ] Enhance the the bussiness logic, as of today, the bulk async is invoking a "Replace per SKU" processing logic.
 - [ ] Enhance the statistics returned in bulk processing results. (maybe improve integration with magento default uuid)
 - [ ] Implement unit and integration tests.
 
@@ -351,11 +303,8 @@ Submits a batch to Magento's message queue for background processing. The respon
 - **“Data in topic must be of type OperationInterface”**  
   Your topic is typed (Async/Bulk). The module publishes a valid `OperationInterface`, so this should only happen if custom topology overrides were installed. Re-run `bin/magento setup:upgrade`.
 
-- **No messages seen in RabbitMQ logs**  
-  Magento validates message type & mapping **before** connecting to AMQP. Run the doctor and check `topic_mapping` and `mq_publish`.
-
-- **Admin config page not visible**  
-  Clear cache and re-login. Ensure `etc/adminhtml/system.xml` and `etc/acl.xml` are present (see repo), and the section appears under **Nacento → Nacento Connector**.
+- **No messages seen in RabbitMQ queues**  
+  Stop the consumer to see if "beep, beep" you're getting hurt like Coyote's by the roadrunner. Magento validates message type & mapping **before** connecting to AMQP. 
 
 
 ---
