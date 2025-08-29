@@ -4,30 +4,49 @@ declare(strict_types=1);
 namespace Nacento\Connector\Model\Data;
 
 use Magento\Framework\DataObject;
+use Nacento\Connector\Api\Data\BulkSkuResultInterface;
 
-/**
- * Data model for the result of a bulk processing operation.
- * @see \Nacento\Connector\Api\Data\BulkResultInterface
- */
-class BulkResult extends DataObject implements \Nacento\Connector\Api\Data\BulkResultInterface
+class BulkSkuResult extends DataObject implements BulkSkuResultInterface
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function getRequestId(): ?string { return $this->getData('request_id'); }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getStats(): \Nacento\Connector\Api\Data\BulkStatsInterface
+    public function getSku(): string
     {
-        /** @var \Nacento\Connector\Api\Data\BulkStatsInterface $stats */
-        $stats = $this->getData('stats');
-        return $stats;
+        return (string) $this->getData('sku');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getResults(): array { return $this->getData('results') ?? []; }
+    public function getProductId(): ?int
+    {
+        $v = $this->getData('product_id');
+        return $v !== null ? (int) $v : null;
+    }
+
+    public function getImageStats(): array
+    {
+        $stats = $this->getData('image_stats');
+        if (is_array($stats)) {
+            return [
+                'added'             => (int) ($stats['added'] ?? 0),
+                'updated_value'     => (int) ($stats['updated_value'] ?? 0),
+                'updated_meta'      => (int) ($stats['updated_meta'] ?? 0),
+                'skipped_no_change' => (int) ($stats['skipped_no_change'] ?? 0),
+            ];
+        }
+        // Back-compat si abans guardaves camps plans
+        return [
+            'added'             => (int) ($this->getData('added') ?? 0),
+            'updated_value'     => (int) ($this->getData('updated_value') ?? 0),
+            'updated_meta'      => (int) ($this->getData('updated_meta') ?? 0),
+            'skipped_no_change' => (int) ($this->getData('skipped_no_change') ?? 0),
+        ];
+    }
+
+    public function setImageStats(array $stats)
+    {
+        return $this->setData('image_stats', $stats);
+    }
+
+    public function getError(): ?string
+    {
+        $v = $this->getData('error');
+        return $v !== null ? (string) $v : null;
+    }
 }

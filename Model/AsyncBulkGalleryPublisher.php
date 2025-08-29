@@ -28,7 +28,7 @@ use Magento\Framework\Exception\LocalizedException;
 /**
  * Asynchronous planner for gallery processing with "Replace per SKU" strategy.
  */
-class GalleryProcessorBulkAsync implements AsyncBulkGalleryManagementInterface
+class AsyncBulkGalleryPublisher implements AsyncBulkGalleryManagementInterface
 {
     public function __construct(
         private readonly BulkManagementInterface $bulkManagement,

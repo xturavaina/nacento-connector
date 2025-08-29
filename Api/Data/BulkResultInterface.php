@@ -19,11 +19,32 @@ interface BulkResultInterface
     public function getRequestId(): ?string;
 
     /**
-     * Retrieves the overall statistics for the processed batch.
-     *
-     * @return \Nacento\Connector\Api\Data\BulkStatsInterface
+     * Aggregated counters for the processed batch.
+     * @return array{
+     *   skus_seen:int,
+     *   ok:int,
+     *   error:int,
+     *   inserted:int,
+     *   updated_value:int,
+     *   updated_meta:int,
+     *   skipped_no_change:int
+     * }
      */
-    public function getStats();
+    public function getStats(): array;
+
+    /**
+     * @param array{
+     *   skus_seen:int,
+     *   ok:int,
+     *   error:int,
+     *   inserted:int,
+     *   updated_value:int,
+     *   updated_meta:int,
+     *   skipped_no_change:int
+     * } $stats
+     * @return $this
+     */
+    public function setStats(array $stats);
 
     /**
      * Retrieves the detailed results for each individual SKU.

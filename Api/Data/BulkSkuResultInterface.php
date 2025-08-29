@@ -9,33 +9,30 @@ namespace Nacento\Connector\Api\Data;
  */
 interface BulkSkuResultInterface
 {
-    /**
-     * Gets the SKU that was processed.
-     *
-     * @return string
-     */
     public function getSku(): string;
-
-    /**
-     * Gets the internal product ID (if it exists).
-     *
-     * @return int|null Returns the product entity ID or null if the product was not found.
-     */
     public function getProductId(): ?int;
 
     /**
-     * Retrieves the gallery processing statistics for this specific SKU.
-     *
-     * @return \Nacento\Connector\Api\Data\ImageStatsInterface
+     * Image counters for this SKU.
+     * @return array{
+     *   added:int,
+     *   updated_value:int,
+     *   updated_meta:int,
+     *   skipped_no_change:int
+     * }
      */
-    public function getImageStats();
+    public function getImageStats(): array;
 
     /**
-     * Returns an error code if the processing failed for this SKU.
-     *
-     * Example error codes could be "product_not_found", "exception", etc.
-     *
-     * @return string|null Returns the error code as a string, or null if there was no error.
+     * @param array{
+     *   added:int,
+     *   updated_value:int,
+     *   updated_meta:int,
+     *   skipped_no_change:int
+     * } $stats
+     * @return $this
      */
+    public function setImageStats(array $stats);
+
     public function getError(): ?string;
 }
