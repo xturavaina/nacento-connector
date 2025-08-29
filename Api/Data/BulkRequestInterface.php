@@ -27,22 +27,14 @@ interface BulkRequestInterface
     /**
      * Retrieves the items to be processed in this bulk request.
      *
-     * Each item is an array with:
-     *  - 'sku' (string): Product SKU.
-     *  - 'images' (\Nacento\Connector\Api\Data\ImageEntryInterface[]): List of image entries.
-     *
-     * @return array<int, array{sku:string, images:\Nacento\Connector\Api\Data\ImageEntryInterface[]}>
+     * @return \Nacento\Connector\Api\Data\BulkItemInterface[]
      */
     public function getItems(): array;
 
     /**
      * Sets the items for this bulk request.
      *
-     * Each item is an array with:
-     *  - 'sku' (string): Product SKU.
-     *  - 'images' (\Nacento\Connector\Api\Data\ImageEntryInterface[]): List of image entries.
-     *
-     * @param array<int, array{sku:string, images:\Nacento\Connector\Api\Data\ImageEntryInterface[]}> $items
+     * @param \Nacento\Connector\Api\Data\BulkItemInterface[] $items
      * @return $this
      */
     public function setItems(array $items);
