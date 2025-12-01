@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Nacento\Connector\Model\Queue;
 
 
@@ -38,32 +40,18 @@ class GalleryConsumer
     public function process(OperationInterface $operation): void
     {
         try {
-            // 1) Deserialitza
             $dataJson = (string)($operation->getSerializedData() ?? '');
             $data     = $dataJson !== '' ? $this->serializer->unserialize($dataJson) : [];
 
-            // 2) Ignora healthchecks (ACK implícit retornant sense excepcions)
-            if (
-                ($data['type'] ?? '') === 'healthcheck'
-                || (string)$operation->getBulkUuid() === 'healthcheck'
-            ) {
-                $this->logger->info('[Nacento][GalleryConsumer] healthcheck message ignored', [
-                    'opId' => (string)$operation->getId(),
-                ]);
-                return; // <-- no retornis true, el mètode és void
-            }
-
-            // 3) Procés “real”
             $sku    = (string)($data['sku'] ?? '');
             $images = (array)($data['images'] ?? []);
 
             if ($sku === '') {
-                throw new \RuntimeException('SKU is empty in the message payload 2');
+                throw new \RuntimeException('SKU is empty in the message payload');
             }
 
             $entries = $this->normalizeImages($images);
             $this->processor->create($sku, $entries);
-
         } catch (\Throwable $e) {
             $this->logger->error(sprintf(
                 '[Nacento][GalleryConsumer] opId=%s sku=%s error=%s',

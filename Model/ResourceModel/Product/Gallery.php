@@ -1,7 +1,9 @@
 <?php
+
 /**
  * Copyright © Nacento
  */
+
 declare(strict_types=1);
 
 namespace Nacento\Connector\Model\ResourceModel\Product;
@@ -45,6 +47,51 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
 
         $result = $connection->fetchRow($select);
         return $result ?: null;
+    }
+
+    /**
+     * Batch version of getExistingImage - fetches all images for a product at once.
+     * This eliminates the N+1 query problem when processing multiple images.
+     *
+     * @param int $productId The ID of the product entity.
+     * @param int $attributeId The ID of the media_gallery attribute.
+     * @param array $filePaths Array of file paths to check.
+     * @return array Associative array indexed by file_path with ['value_id', 'record_id', 's3_etag']
+     * @throws LocalizedException
+     */
+    public function getExistingImages(int $productId, int $attributeId, array $filePaths): array
+    {
+        if (empty($filePaths)) {
+            return [];
+        }
+
+        $connection = $this->getConnection();
+        $linkTable = $this->getTable('catalog_product_entity_media_gallery_value_to_entity');
+        $valueTable = $this->getTable('catalog_product_entity_media_gallery_value');
+        $metaTable  = $this->getTable('nacento_media_gallery_meta');
+
+        $select = $connection->select()
+            ->from(['main_table' => $this->getMainTable()], ['value_id', 'value'])
+            ->join(['link' => $linkTable], 'main_table.value_id = link.value_id', [])
+            ->join(
+                ['value' => $valueTable],
+                'main_table.value_id = value.value_id AND value.entity_id = link.entity_id AND value.store_id = 0',
+                ['record_id']
+            )
+            ->joinLeft(['meta' => $metaTable], 'value.record_id = meta.record_id', ['s3_etag' => 's3_etag'])
+            ->where('link.entity_id = ?', $productId)
+            ->where('main_table.attribute_id = ?', $attributeId)
+            ->where('main_table.value IN (?)', $filePaths);
+
+        $rows = $connection->fetchAll($select);
+
+        // Index by file path for easy lookup
+        $result = [];
+        foreach ($rows as $row) {
+            $result[$row['value']] = $row;
+        }
+
+        return $result;
     }
 
     /**
@@ -122,7 +169,7 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
 
         return (int) $connection->lastInsertId($table);
     }
-    
+
     /**
      * Saves or updates metadata in the custom `nacento_media_gallery_meta` table.
      * This is used to store supplementary information, such as an S3 ETag for the image file.

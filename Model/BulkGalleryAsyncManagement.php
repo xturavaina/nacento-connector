@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Nacento\Connector\Model;
@@ -7,7 +8,6 @@ use Magento\Authorization\Model\UserContextInterface;
 use Magento\Framework\Bulk\BulkManagementInterface;
 use Magento\Framework\Bulk\OperationInterface;
 use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Framework\Math\Random;
 use Magento\Framework\DataObject;
 use Psr\Log\LoggerInterface;
 
@@ -39,7 +39,6 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
      * @param UserContextInterface $userContext Provides the ID of the user initiating the request.
      * @param AsyncResponseInterfaceFactory $asyncResponseFactory Factory to create the final asynchronous response.
      * @param ItemStatusInterfaceFactory $itemStatusFactory Factory to create status objects for each item in the request.
-     * @param Random $random Utility for generating random/unique hashes.
      * @param LoggerInterface $logger For logging warnings or errors.
      */
     public function __construct(
@@ -49,7 +48,6 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
         private readonly UserContextInterface $userContext,
         private readonly AsyncResponseInterfaceFactory $asyncResponseFactory,
         private readonly ItemStatusInterfaceFactory $itemStatusFactory,
-        private readonly Random $random,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -181,7 +179,7 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
             }
 
             // An unexpected format was found; log it and skip to avoid errors.
-            $this->logger->warning('[NacentoConnector][BulkPlanner] Image with unexpected format ('.gettype($img).'). Skipping.');
+            $this->logger->warning('[NacentoConnector][BulkPlanner] Image with unexpected format (' . gettype($img) . '). Skipping.');
         }
 
         return $out;
@@ -195,7 +193,7 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
         $st = $this->itemStatusFactory->create();
         $st->setId($id);
         // A stable hash based on SKU (change if you need to include more fields).
-        $st->setDataHash(md5($sku !== '' ? $sku : ('#'.$id)));
+        $st->setDataHash(md5($sku !== '' ? $sku : ('#' . $id)));
         $st->setStatus($status);
         if ($msg) {
             $st->setErrorMessage($msg);

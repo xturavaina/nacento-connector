@@ -18,8 +18,8 @@ The primary goal is to **bypass Magento's native image processing and copying**,
 
 This module has evolved from a simple single-SKU endpoint into a more comprehensive bulk processing system focused on performance and flexibility.
 
-1.  **Bulk Processing:** In addition to the original single-product endpoint, the module now offers bulk endpoints to process hundreds or thousands of SKUs in a single request.
-2.  **Synchronous vs. Asynchronous:** You can choose between synchronous processing (the response waits for everything to complete) or asynchronous processing (the request is queued via Magento's Message Queue for background processing), which is ideal for very large workloads.
+1.  **Bulk Processing:** The module offers a bulk endpoint to process hundreds or thousands of SKUs in a single request.
+2.  **Asynchronous Processing:** Requests are queued via Magento's Message Queue for background processing, which is ideal for very large workloads.
 3.  **ETag Change Detection:** The module uses a lightweight S3 client to perform `HEAD` requests and retrieve the **ETag** of each image. This allows it to detect if a file's content has actually changed, avoiding unnecessary database writes and only updating metadata if the file itself is unchanged.
 
 ---
@@ -34,10 +34,8 @@ This module has evolved from a simple single-SKU endpoint into a more comprehens
 
 ## Features
 
-- **Three REST Web API Endpoints:**
-    - One for **single SKU** updates.
-    - One for **synchronous bulk** processing.
-    - One for **asynchronous bulk** processing via Magento's Message Queue.
+- **One REST Web API Endpoint:**
+    - **Asynchronous bulk** processing via Magento's Message Queue.
 - **Performance Optimization:**
     - Skips Magento’s image processing for improved speed.
     - Uses a dedicated **S3/R2 client** for `HEAD` requests to check **ETags**, only updating data when necessary.
@@ -208,26 +206,6 @@ Follow these steps after uninstalling the module:
 
 ---
 
-## HealthCheck Diagnostics Configuration (Admin)
-
-Go to **Stores → Configuration → Nacento → Nacento Connector**:
-
-- **Message Queue → Topic name** (optional): if empty, defaults to `nacento.gallery.process`.
-- **S3/R2 → Ping object key (optional)**: if set, the health check will `HEAD` this object to validate connectivity.
-
-> The actual S3/R2 **remote storage driver** and credentials still live in `app/etc/env.php` (`remote_storage` section). This page only adds optional diagnostics/config.
-
----
-
-## Health check / Doctor (CLI)
-
-Run a full diagnostic (DB, remote storage config, MQ mapping, optional publish):
-
-```bash
-bin/magento nacento:connector:doctor
-```
----
-
 ## Message Queue & Consumers
 
 This module uses a topic named **`nacento.gallery.process`** (publisher) and a consumer named **`nacento.gallery.consumer`** (listens to queue `nacento.gallery.process`).
@@ -250,34 +228,13 @@ Publishing does not require a running consumer; messages will queue up and be pr
 --- 
 ## API Endpoints
 
-The module exposes three distinct endpoints. Please check `etc/webapi.xml` for the definitive definitions.
+The module exposes a single endpoint for asynchronous bulk processing. Please check `etc/webapi.xml` for the definitive definitions.
 
-### 1. Single SKU Update (Synchronous)
+### Bulk Processing (Asynchronous)
 
-Ideal for one-off updates or testing.
+Submits a batch to Magento's message queue for background processing. The response is immediate and contains a `bulk_uuid` for tracking. This is the best option for large batches.
 
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/:sku/media`
-- **Sample Payload:**
-
-```json
-{
-  "images": [
-    {
-      "file_path": "catalog/product/m/y/my-image-1.jpg",
-      "label": "Front View",
-      "position": 1,
-      "disabled": false,
-      "roles": ["base", "small_image", "thumbnail"]
-    }
-  ]
-}
-```
-
-### 2. Bulk Processing (Synchronous)
-
-Processes a batch of SKUs and returns the full result in the response. Suitable for small to medium-sized batches.
-
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk`
+- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk/async`
 - **Sample Payload:**
 
 ```json
@@ -297,24 +254,7 @@ Processes a batch of SKUs and returns the full result in the response. Suitable 
   }
 }
 ```
-- **Sample Response:**
-```json
-{
-    "request_id": "op-12345",
-    "stats": { "skus_seen": 2, "ok": 2, "error": 0, "inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0 },
-    "results": [
-        { "sku": "SKU-001", "product_id": 10, "image_stats": {"inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0, "warnings": []}, "error": null },
-        { "sku": "SKU-002", "product_id": 11, "image_stats": {"inserted": 0, "updated_value": 0, "updated_meta": 0, "skipped_no_change": 0, "warnings": []}, "error": null }
-    ]
-}
-```
 
-### 3. Bulk Processing (Asynchronous)
-
-Submits a batch to Magento's message queue for background processing. The response is immediate and contains a `bulk_uuid` for tracking. This is the best option for large batches.
-
-- **Endpoint:** `POST /rest/V1/nacento-connector/products/media/bulk/async`
-- **Payload:** Same as the synchronous bulk endpoint.
 - **Sample Response:**
 ```json
 {
@@ -352,10 +292,7 @@ Submits a batch to Magento's message queue for background processing. The respon
   Your topic is typed (Async/Bulk). The module publishes a valid `OperationInterface`, so this should only happen if custom topology overrides were installed. Re-run `bin/magento setup:upgrade`.
 
 - **No messages seen in RabbitMQ logs**  
-  Magento validates message type & mapping **before** connecting to AMQP. Run the doctor and check `topic_mapping` and `mq_publish`.
-
-- **Admin config page not visible**  
-  Clear cache and re-login. Ensure `etc/adminhtml/system.xml` and `etc/acl.xml` are present (see repo), and the section appears under **Nacento → Nacento Connector**.
+  Magento validates message type & mapping **before** connecting to AMQP. Check your `etc/queue.xml`, `etc/queue_consumer.xml`, and `etc/queue_publisher.xml` configuration.
 
 
 ---

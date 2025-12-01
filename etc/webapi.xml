@@ -2,21 +2,7 @@
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
 
-    <!-- Original endpoint for updating a single product gallery by SKU -->
-    <route url="/V1/nacento-connector/products/:sku/media" method="POST">
-        <service class="Nacento\Connector\Api\CustomGalleryManagementInterface" method="create"/>
-        <resources>
-            <resource ref="Magento_Catalog::products"/>
-        </resources>
-    </route>
 
-    <!-- Synchronous bulk endpoint for updating multiple product galleries -->
-    <route url="/V1/nacento-connector/products/media/bulk" method="POST">
-        <service class="Nacento\Connector\Api\BulkGalleryManagementInterface" method="process"/>
-        <resources>
-            <resource ref="Magento_catalog::products"/>
-        </resources>
-    </route>
 
     <!-- Asynchronous bulk endpoint for updating multiple product galleries -->
     <route url="/V1/nacento-connector/products/media/bulk/async" method="POST">
