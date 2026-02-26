@@ -101,12 +101,13 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
             // Create a new operation for this single SKU.
             $operations[] = $this->operationFactory->create([
                 'data' => [
-                    OperationInterface::BULK_ID         => $bulkUuid,
-                    OperationInterface::TOPIC_NAME      => 'nacento.gallery.process',
-                    OperationInterface::SERIALIZED_DATA => $this->serializer->serialize($payload),
-                    OperationInterface::STATUS          => OperationInterface::STATUS_TYPE_OPEN,
+                    'bulk_uuid'       => $bulkUuid,
+                    'topic_name'      => 'nacento.gallery.process',
+                    'serialized_data' => $this->serializer->serialize($payload),
+                    'status'          => OperationInterface::STATUS_TYPE_OPEN,
                 ],
             ]);
+
 
             // Create an 'accepted' status for this valid SKU to be included in the response.
             $statuses[] = $this->makeStatus($seq++, $sku, ItemStatusInterface::STATUS_ACCEPTED);

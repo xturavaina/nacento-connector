@@ -12,7 +12,18 @@
     <preference for="Nacento\Connector\Api\Data\ProcessGalleryMessageInterface"
                 type="Nacento\Connector\Model\Data\ProcessGalleryMessage"/>
 
+    <!-- DTOs for the bulk request payload -->
+    <preference for="Nacento\Connector\Api\Data\BulkRequestInterface"
+                type="Nacento\Connector\Model\Data\BulkRequest"/>
+    
+    <preference for="Nacento\Connector\Api\Data\BulkItemInterface"
+                type="Nacento\Connector\Model\Data\BulkItem"/>
+    
+    <preference for="Nacento\Connector\Api\Data\ImageEntryInterface"
+                type="Nacento\Connector\Model\Data\ImageEntry"/>
 
+    <preference for="Magento\Framework\Bulk\OperationManagementInterface"
+                type="Nacento\Connector\Model\Bulk\OperationManagement"/>
 
 
 
