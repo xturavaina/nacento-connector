@@ -22,9 +22,4 @@
     <preference for="Nacento\Connector\Api\Data\ImageEntryInterface"
                 type="Nacento\Connector\Model\Data\ImageEntry"/>
 
-    <preference for="Magento\Framework\Bulk\OperationManagementInterface"
-                type="Nacento\Connector\Model\Bulk\OperationManagement"/>
-
-
-
 </config>

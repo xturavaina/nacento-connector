@@ -8,7 +8,6 @@ use Magento\Authorization\Model\UserContextInterface;
 use Magento\Framework\Bulk\BulkManagementInterface;
 use Magento\Framework\Bulk\OperationInterface;
 use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Framework\DataObject;
 use Psr\Log\LoggerInterface;
 
 use Magento\AsynchronousOperations\Api\Data\AsyncResponseInterface;
@@ -20,7 +19,9 @@ use Magento\AsynchronousOperations\Model\OperationFactory;
 
 use Nacento\Connector\Api\BulkGalleryAsyncManagementInterface;
 use Nacento\Connector\Api\Data\BulkRequestInterface;
-use Nacento\Connector\Api\Data\ImageEntryInterface;
+use Nacento\Connector\Model\Bulk\ImagePayloadNormalizer;
+use Nacento\Connector\Model\Bulk\OperationKeyFactory;
+use Nacento\Connector\Model\Bulk\RequestValidator;
 
 /**
  * Asynchronous planner for publishing gallery processing batches.
@@ -48,7 +49,10 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
         private readonly UserContextInterface $userContext,
         private readonly AsyncResponseInterfaceFactory $asyncResponseFactory,
         private readonly ItemStatusInterfaceFactory $itemStatusFactory,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly ImagePayloadNormalizer $imagePayloadNormalizer,
+        private readonly RequestValidator $requestValidator,
+        private readonly OperationKeyFactory $operationKeyFactory
     ) {}
 
     /**
@@ -59,131 +63,118 @@ class BulkGalleryAsyncManagement implements BulkGalleryAsyncManagementInterface
      */
     public function submit(BulkRequestInterface $request): AsyncResponseInterface
     {
-        // Generate a unique identifier for this entire bulk operation.
-        $bulkUuid = $this->uuidV4(); // You could also use $this->random->getUniqueHash();
-        // Get the current user ID for ownership and permissions.
+        $bulkUuid = $this->uuidV4();
         $userId   = (int)($this->userContext->getUserId() ?? 0);
-        // Define a description for the bulk operation.
         $desc     = 'Nacento gallery bulk';
+        $requestId = $this->requestValidator->normalizeRequestId($request->getRequestId());
 
-        // Step 1: Deduplicate items by SKU, ensuring only the last entry for each SKU is processed.
-        $map = [];
-        foreach ($request->getItems() ?? [] as $it) {
-            $sku = (string)($it->getSku() ?? '');
-            if ($sku !== '') {
-                $map[$sku] = $it;
-            }
-        }
-        $unique = array_values($map);
-
-        // Step 2: Build the individual operations for the message queue and their corresponding status reports.
         $operations = [];
         $statuses   = [];
         $seq        = 1;
+        $hasErrors = false;
+        $validBySku = [];
+        $invalidCount = 0;
+        $totalCount = 0;
 
-        foreach ($unique as $it) {
-            $sku = (string)($it->getSku() ?? '');
-            // If an item lacks a SKU, it's invalid and gets rejected immediately.
+        foreach ($request->getItems() ?? [] as $item) {
+            $totalCount++;
+            $sku = $this->requestValidator->normalizeSku((string)($item->getSku() ?? ''));
+
             if ($sku === '') {
                 $statuses[] = $this->makeStatus($seq++, '', ItemStatusInterface::STATUS_REJECTED, 'Missing SKU');
+                $invalidCount++;
+                $hasErrors = true;
                 continue;
             }
 
-            // Convert image objects into a simple, serializable array payload.
-            $imagesPayload = $this->imagesToPayload($it->getImages() ?? []);
+            $imagesPayload = $this->imagePayloadNormalizer->normalizeList((array)($item->getImages() ?? []));
+            $rejection = $this->firstImageRejection($imagesPayload);
+            if ($rejection !== null) {
+                $statuses[] = $this->makeStatus($seq++, $sku, ItemStatusInterface::STATUS_REJECTED, $rejection);
+                $invalidCount++;
+                $hasErrors = true;
+                continue;
+            }
 
-            // This is the final payload that will travel through the message queue to the consumer.
-            $payload = [
-                'sku'    => $sku,
+            $validBySku[$sku] = [
+                'sku' => $sku,
                 'images' => $imagesPayload,
             ];
+        }
 
-            // Create a new operation for this single SKU.
+        foreach (array_values($validBySku) as $itemPayload) {
+            $sku = $itemPayload['sku'];
+            $payload = [
+                'sku' => $sku,
+                'images' => $itemPayload['images'],
+            ];
+            if ($requestId !== null) {
+                $payload['request_id'] = $requestId;
+            }
+
+            $operationKey = $this->operationKeyFactory->make($bulkUuid, $sku);
+
             $operations[] = $this->operationFactory->create([
                 'data' => [
-                    'bulk_uuid'       => $bulkUuid,
-                    'topic_name'      => 'nacento.gallery.process',
+                    'bulk_uuid' => $bulkUuid,
+                    'topic_name' => 'nacento.gallery.process',
                     'serialized_data' => $this->serializer->serialize($payload),
-                    'status'          => OperationInterface::STATUS_TYPE_OPEN,
+                    'status' => OperationInterface::STATUS_TYPE_OPEN,
+                    'operation_key' => $operationKey,
                 ],
             ]);
 
-
-            // Create an 'accepted' status for this valid SKU to be included in the response.
             $statuses[] = $this->makeStatus($seq++, $sku, ItemStatusInterface::STATUS_ACCEPTED);
         }
 
-        // Only schedule the bulk operation if there are valid items to process.
-        if (!empty($operations)) {
-            $this->bulkManagement->scheduleBulk($bulkUuid, $operations, $desc, $userId);
-        } else {
-            // Log a warning if the request was empty or contained no valid SKUs.
-            $this->logger->warning('[NacentoConnector][BulkPlanner] No operations were scheduled (were there any valid SKUs?)');
+        try {
+            if (!empty($operations)) {
+                $this->bulkManagement->scheduleBulk($bulkUuid, $operations, $desc, $userId);
+            } else {
+                $this->logger->warning('[NacentoConnector][BulkPlanner] No operations were scheduled', [
+                    'bulk_uuid' => $bulkUuid,
+                    'request_id' => $requestId,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            $hasErrors = true;
+            $this->logger->error('[NacentoConnector][BulkPlanner] Failed to schedule bulk', [
+                'bulk_uuid' => $bulkUuid,
+                'request_id' => $requestId,
+                'exception' => $e,
+            ]);
         }
 
-        // Step 3: Construct and return the standard asynchronous response object.
+        $this->logger->info('[NacentoConnector][BulkPlanner] Planned bulk request', [
+            'bulk_uuid' => $bulkUuid,
+            'request_id' => $requestId,
+            'total' => $totalCount,
+            'valid' => count($validBySku),
+            'deduped' => max(0, $totalCount - $invalidCount - count($validBySku)),
+            'rejected' => $invalidCount,
+        ]);
+
         $resp = $this->asyncResponseFactory->create();
         $resp->setBulkUuid($bulkUuid);
         $resp->setRequestItems($statuses);
-        $resp->setErrors(false);
+        $resp->setErrors($hasErrors);
 
         return $resp;
     }
 
     /**
-     * Converts a collection of images (DTOs, arrays, DataObjects) into whitelisted, plain associative arrays.
-     * This ensures the payload is clean, consistent, and serializable.
-     *
-     * @param array $images The mixed array of image data.
-     * @return array<int,array{file_path:string,label:string,disabled:bool,position:int,roles:array}>
+     * @param array<int,array{file_path:string,label:string,disabled:bool,position:int,roles:array<int,string>}> $images
      */
-    private function imagesToPayload(array $images): array
+    private function firstImageRejection(array $images): ?string
     {
-        $out = [];
-
-        foreach ($images as $img) {
-            // Case 1: The item is already a typed DTO (ImageEntryInterface).
-            if ($img instanceof ImageEntryInterface) {
-                $out[] = [
-                    'file_path' => (string)$img->getFilePath(),
-                    'label'     => (string)$img->getLabel(),
-                    'disabled'  => (bool)$img->isDisabled(),
-                    'position'  => (int)$img->getPosition(),
-                    'roles'     => array_values($img->getRoles() ?? []),
-                ];
-                continue;
+        foreach ($images as $image) {
+            $error = $this->requestValidator->validateImage($image);
+            if ($error !== null) {
+                return $error;
             }
-
-            // Case 2: The item is a generic DataObject.
-            if ($img instanceof DataObject) {
-                $row = $img->getData();
-                $out[] = [
-                    'file_path' => (string)($row['file_path'] ?? ''),
-                    'label'     => (string)($row['label'] ?? ''),
-                    'disabled'  => !empty($row['disabled']),
-                    'position'  => (int)($row['position'] ?? 0),
-                    'roles'     => isset($row['roles']) && is_array($row['roles']) ? array_values($row['roles']) : [],
-                ];
-                continue;
-            }
-
-            // Case 3: The item is a plain associative array.
-            if (is_array($img)) {
-                $out[] = [
-                    'file_path' => (string)($img['file_path'] ?? ''),
-                    'label'     => (string)($img['label'] ?? ''),
-                    'disabled'  => !empty($img['disabled']),
-                    'position'  => (int)($img['position'] ?? 0),
-                    'roles'     => isset($img['roles']) && is_array($img['roles']) ? array_values($img['roles']) : [],
-                ];
-                continue;
-            }
-
-            // An unexpected format was found; log it and skip to avoid errors.
-            $this->logger->warning('[NacentoConnector][BulkPlanner] Image with unexpected format (' . gettype($img) . '). Skipping.');
         }
 
-        return $out;
+        return null;
     }
 
     /**

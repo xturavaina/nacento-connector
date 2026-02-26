@@ -38,7 +38,7 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
             ->join(
                 ['value' => $valueTable],
                 'main_table.value_id = value.value_id AND value.entity_id = link.entity_id AND value.store_id = 0',
-                ['record_id']
+                ['record_id', 'label', 'position', 'disabled']
             )
             ->joinLeft(['meta' => $metaTable], 'value.record_id = meta.record_id', ['s3_etag' => 's3_etag'])
             ->where('link.entity_id = ?', $productId)
@@ -56,7 +56,7 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
      * @param int $productId The ID of the product entity.
      * @param int $attributeId The ID of the media_gallery attribute.
      * @param array $filePaths Array of file paths to check.
-     * @return array Associative array indexed by file_path with ['value_id', 'record_id', 's3_etag']
+     * @return array Associative array indexed by file_path with comparison fields.
      * @throws LocalizedException
      */
     public function getExistingImages(int $productId, int $attributeId, array $filePaths): array
@@ -76,7 +76,7 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
             ->join(
                 ['value' => $valueTable],
                 'main_table.value_id = value.value_id AND value.entity_id = link.entity_id AND value.store_id = 0',
-                ['record_id']
+                ['record_id', 'label', 'position', 'disabled']
             )
             ->joinLeft(['meta' => $metaTable], 'value.record_id = meta.record_id', ['s3_etag' => 's3_etag'])
             ->where('link.entity_id = ?', $productId)
@@ -199,5 +199,20 @@ class Gallery extends \Magento\Catalog\Model\ResourceModel\Product\Gallery
             $data,
             ['record_id = ?' => $recordId]
         );
+    }
+
+    public function beginTransaction(): void
+    {
+        $this->getConnection()->beginTransaction();
+    }
+
+    public function commit(): void
+    {
+        $this->getConnection()->commit();
+    }
+
+    public function rollBack(): void
+    {
+        $this->getConnection()->rollBack();
     }
 }

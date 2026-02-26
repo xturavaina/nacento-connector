@@ -18,6 +18,8 @@ use Magento\Framework\Filesystem;
 use Psr\Log\LoggerInterface;
 use Magento\Catalog\Model\Product\Media\Config as MediaConfig;
 use Magento\Catalog\Model\Product\Action as ProductAction;
+use Nacento\Connector\Model\Gallery\ManagedRoleSetProvider;
+use Nacento\Connector\Model\Gallery\RoleMapper;
 use Nacento\Connector\Model\S3HeadClient;
 
 /**
@@ -34,7 +36,9 @@ class GalleryProcessor
         private readonly ProductAttributeRepositoryInterface $productAttributeRepository,
         private readonly ProductAction $productAction,
         private readonly MediaConfig $mediaConfig,
-        private readonly S3HeadClient $s3Head
+        private readonly S3HeadClient $s3Head,
+        private readonly RoleMapper $roleMapper,
+        private readonly ManagedRoleSetProvider $managedRoleSetProvider
     ) {}
 
     /**
@@ -44,57 +48,61 @@ class GalleryProcessor
      */
     public function create(string $sku, array $images): bool
     {
-        $this->logger->debug(sprintf(
-            '[NacentoConnector] Starting process for SKU: %s. %d images received.',
-            $sku,
-            count($images)
-        ));
+        $this->logger->debug('[NacentoConnector][GalleryProcessor] Starting SKU sync', [
+            'sku' => $sku,
+            'images_received' => count($images),
+        ]);
 
         // Early exit if there are no images to process.
         if (empty($images)) {
-            $this->logger->warning('[NacentoConnector] The images array is empty. Nothing to do.');
+            $this->logger->warning('[NacentoConnector][GalleryProcessor] The images array is empty. Nothing to do.', [
+                'sku' => $sku,
+            ]);
             return true;
         }
 
         try {
-            // --- STEP 1: INITIAL VERIFICATIONS (performed outside the loop for efficiency) ---
             $product          = $this->productRepository->get($sku);
             $galleryAttribute = $this->productAttributeRepository->get('media_gallery');
             $mediaDirectory   = $this->filesystem->getDirectoryRead(DirectoryList::MEDIA);
             $rolesToUpdate    = [];
+            $stats = [
+                'inserted' => 0,
+                'updated' => 0,
+                'skipped_noop' => 0,
+                'invalid' => 0,
+            ];
 
-            // --- GET THE FILESYSTEM DRIVER (to check if we are on S3) ---
             $mediaDirectoryWriter = $this->filesystem->getDirectoryWrite(DirectoryList::MEDIA);
             /** @var \Magento\Framework\Filesystem\DriverInterface|\Magento\AwsS3\Driver\AwsS3 $mediaDriver */
             $mediaDriver = $mediaDirectoryWriter->getDriver();
             $isS3 = $mediaDriver instanceof \Magento\AwsS3\Driver\AwsS3;
 
-            // --- Local utility to normalize the ETag (remove quotes) ---
             $norm = static function ($e) {
                 return $e !== null ? trim((string)$e, '\"') : null;
             };
 
-            // --- STEP 2: COLLECT AND VALIDATE ALL FILE PATHS ---
             $validImages = [];
             $filePaths = [];
 
             foreach ($images as $imageEntry) {
                 $filePath = ltrim($imageEntry->getFilePath() ?? '', '/\\');
-                $label    = $imageEntry->getLabel() ?? '';
 
-                // Validate essential data
-                if (empty($filePath) || empty($label)) {
-                    $this->logger->error('[NacentoConnector] Skipping image due to empty filePath or label.');
+                if ($filePath === '') {
+                    $stats['invalid']++;
+                    $this->logger->error('[NacentoConnector][GalleryProcessor] Skipping image due to empty file_path', [
+                        'sku' => $sku,
+                    ]);
                     continue;
                 }
 
-                // Verify file exists
                 $fullPathForValidation = $this->mediaConfig->getMediaPath($filePath);
                 if (!$mediaDirectory->isExist($fullPathForValidation)) {
-                    $this->logger->error(sprintf(
-                        '[NacentoConnector] Skipping image. File does not exist at: %s',
-                        $fullPathForValidation
-                    ));
+                    $stats['invalid']++;
+                    $this->logger->error('[NacentoConnector][GalleryProcessor] Skipping image because file does not exist', [
+                        'sku' => $sku,
+                        'path' => $fullPathForValidation,
+                    ]);
                     continue;
                 }
 
@@ -103,128 +111,128 @@ class GalleryProcessor
             }
 
             if (empty($validImages)) {
-                $this->logger->warning('[NacentoConnector] No valid images to process after validation.');
+                $this->logger->warning('[NacentoConnector][GalleryProcessor] No valid images after validation', [
+                    'sku' => $sku,
+                ]);
                 return true;
             }
 
-            // --- STEP 3: BATCH FETCH EXISTING IMAGES (ONE QUERY) ---
             $existingImages = $this->galleryResourceModel->getExistingImages(
                 (int)$product->getId(),
                 (int)$galleryAttribute->getAttributeId(),
                 $filePaths
             );
 
-            // --- STEP 4: PROCESS EACH IMAGE ---
-            foreach ($validImages as $filePath => $imageEntry) {
-                $label    = $imageEntry->getLabel() ?? '';
-                $disabled = $imageEntry->isDisabled();
-                $position = $imageEntry->getPosition();
-                $roles    = $imageEntry->getRoles() ?? [];
+            $this->galleryResourceModel->beginTransaction();
+            try {
+                foreach ($validImages as $filePath => $imageEntry) {
+                    $label    = $imageEntry->getLabel() ?? '';
+                    $disabled = $imageEntry->isDisabled();
+                    $position = $imageEntry->getPosition();
+                    $roles    = $this->roleMapper->mapMany($imageEntry->getRoles() ?? []);
 
-                $this->logger->debug(sprintf('[NacentoConnector] Processing image: %s', $filePath));
-
-                // Get current ETag from S3 if applicable
-                $currentEtagNorm = null;
-                if ($isS3) {
-                    $relative = $this->mediaConfig->getMediaPath($filePath);
-                    $etag = $this->s3Head->getEtag($relative);
-                    $currentEtagNorm = $etag ? $norm($etag) : null;
-                }
-
-                // Check if image already exists (from batch query)
-                $existingImage = $existingImages[$filePath] ?? null;
-                $savedEtagNorm = isset($existingImage['s3_etag']) ? $norm($existingImage['s3_etag']) : null;
-
-                // Prepare common value data
-                $valueData = [
-                    'entity_id' => (int)$product->getId(),
-                    'label'     => $label,
-                    'position'  => $position,
-                    'disabled'  => (int)$disabled,
-                    'store_id'  => 0,
-                ];
-
-                if ($existingImage && isset($existingImage['record_id'])) {
-                    // --- CASE A: IMAGE EXISTS -> UPDATE (core table) + UPSERT ETag (meta table) ---
-                    $recordId = (int)$existingImage['record_id'];
-                    $this->logger->debug(sprintf(
-                        '[NacentoConnector] Updating existing image %s (record_id: %d)',
-                        $filePath,
-                        $recordId
-                    ));
-
-                    // Log if the content has changed based on the ETag.
-                    if ($currentEtagNorm !== $savedEtagNorm) {
-                        $this->logger->debug(sprintf(
-                            '[NacentoConnector] Content changed: %s (ETag %s → %s)',
-                            $filePath,
-                            (string)$savedEtagNorm,
-                            (string)$currentEtagNorm
-                        ));
+                    $currentEtagNorm = null;
+                    if ($isS3) {
+                        $relative = $this->mediaConfig->getMediaPath($filePath);
+                        $etag = $this->s3Head->getEtag($relative);
+                        $currentEtagNorm = $etag ? $norm($etag) : null;
                     }
 
-                    // Perform the UPDATE on the core gallery value table (label/position/disabled).
-                    $this->galleryResourceModel->updateValueRecord($recordId, $valueData);
-                    // Perform an UPSERT for the ETag in our custom metadata table.
-                    $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
-                } else {
-                    // --- CASE B: IMAGE IS NEW -> INSERT (core tables) + UPSERT ETag (meta table) ---
-                    $this->logger->debug(sprintf(
-                        '[NacentoConnector] Inserting new image: %s',
-                        $filePath
-                    ));
+                    $existingImage = $existingImages[$filePath] ?? null;
+                    $savedEtagNorm = isset($existingImage['s3_etag']) ? $norm($existingImage['s3_etag']) : null;
 
-                    // If the main gallery entry (in `main_table`) doesn't exist, create and link it.
-                    $valueIdToUse = $existingImage['value_id'] ?? null;
-                    if (!$valueIdToUse) {
-                        $newImageData = [
-                            'attribute_id' => (int)$galleryAttribute->getAttributeId(),
-                            'media_type'   => 'image',
-                            'value'        => $filePath
-                        ];
-                        $valueIdToUse = (int)$this->galleryResourceModel->insertNewRecord($newImageData);
-                        $this->galleryResourceModel->createLink($valueIdToUse, (int)$product->getId());
+                    $valueData = [
+                        'entity_id' => (int)$product->getId(),
+                        'label'     => $label,
+                        'position'  => $position,
+                        'disabled'  => (int)$disabled,
+                        'store_id'  => 0,
+                    ];
+
+                    if ($existingImage && isset($existingImage['record_id'])) {
+                        $recordId = (int)$existingImage['record_id'];
+                        $metaChanged = $this->hasValueDataChanged($existingImage, $valueData);
+                        $etagChanged = $currentEtagNorm !== null && $currentEtagNorm !== $savedEtagNorm;
+
+                        if (!$metaChanged && !$etagChanged) {
+                            $stats['skipped_noop']++;
+                        } else {
+                            if ($metaChanged) {
+                                $this->galleryResourceModel->updateValueRecord($recordId, $valueData);
+                            }
+                            if ($etagChanged) {
+                                $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
+                            }
+                            $stats['updated']++;
+                        }
+                    } else {
+                        $valueIdToUse = $existingImage['value_id'] ?? null;
+                        if (!$valueIdToUse) {
+                            $newImageData = [
+                                'attribute_id' => (int)$galleryAttribute->getAttributeId(),
+                                'media_type'   => 'image',
+                                'value'        => $filePath
+                            ];
+                            $valueIdToUse = (int)$this->galleryResourceModel->insertNewRecord($newImageData);
+                            $this->galleryResourceModel->createLink($valueIdToUse, (int)$product->getId());
+                        }
+
+                        $valueData['value_id'] = $valueIdToUse;
+                        $recordId = (int)$this->galleryResourceModel->insertValueRecord($valueData);
+                        $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
+                        $stats['inserted']++;
                     }
 
-                    // Insert the value row (for store_id 0). It's crucial that this method returns the new `record_id`.
-                    $valueData['value_id'] = $valueIdToUse;
-                    $recordId = (int)$this->galleryResourceModel->insertValueRecord($valueData);
-                    // Perform an UPSERT for the ETag in our custom metadata table.
-                    $this->galleryResourceModel->saveMetaRecord($recordId, $currentEtagNorm);
-
-                    $this->logger->debug(sprintf(
-                        '[NacentoConnector] Image registered (value_id: %d, record_id: %d)',
-                        $valueIdToUse,
-                        $recordId
-                    ));
-                }
-
-                // 2d. Accumulate all image roles to be updated in a single call later.
-                foreach ($roles as $role) {
-                    if (!empty($role)) {
+                    foreach ($roles as $role) {
                         $rolesToUpdate[$role] = $filePath;
                     }
                 }
-            }
 
-            // --- STEP 3: ROLE MANAGEMENT (A single call at the end for performance) ---
-            if (!empty($rolesToUpdate)) {
-                $this->logger->debug('[NacentoConnector] Updating image roles');
-                $this->productAction->updateAttributes([(int)$product->getId()], $rolesToUpdate, 0);
-            }
+                $clearRoles = [];
+                foreach ($this->managedRoleSetProvider->getManagedRoles() as $roleCode) {
+                    $clearRoles[$roleCode] = 'no_selection';
+                }
 
-            // --- STEP 4: CACHE CLEANING ---
-            // Cache invalidation is handled by ProductAction, so manual cleaning is not strictly necessary
-            // and can sometimes cause issues. A try-catch here prevents a process failure.
-            $this->logger->info(sprintf('[NacentoConnector] Gallery update completed for SKU: %s', $sku));
-        } catch (\Exception $e) {
+                $this->productAction->updateAttributes([(int)$product->getId()], $clearRoles, 0);
+                if (!empty($rolesToUpdate)) {
+                    $this->productAction->updateAttributes([(int)$product->getId()], $rolesToUpdate, 0);
+                }
+
+                $this->galleryResourceModel->commit();
+            } catch (\Throwable $e) {
+                $this->galleryResourceModel->rollBack();
+                throw $e;
+            }
+            $this->logger->info('[NacentoConnector][GalleryProcessor] SKU sync completed', [
+                'sku' => $sku,
+                'inserted' => $stats['inserted'],
+                'updated' => $stats['updated'],
+                'skipped_noop' => $stats['skipped_noop'],
+                'invalid' => $stats['invalid'],
+                'roles_assigned' => count($rolesToUpdate),
+            ]);
+        } catch (\Throwable $e) {
             $this->logger->critical(
-                '[NacentoConnector] Critical exception during bulk process: ' . $e->getMessage(),
-                ['exception' => $e]
+                '[NacentoConnector][GalleryProcessor] Critical exception while syncing SKU ' . $sku . ': ' . $e->getMessage(),
+                ['exception' => $e, 'sku' => $sku]
             );
-            throw new CouldNotSaveException(__("A critical error occurred during the bulk process. Please review the logs."), $e);
+            throw new CouldNotSaveException(
+                __("Failed to sync gallery for SKU %1. Please review logs.", $sku),
+                $e
+            );
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string,mixed> $existingImage
+     * @param array<string,mixed> $valueData
+     */
+    private function hasValueDataChanged(array $existingImage, array $valueData): bool
+    {
+        return (string)($existingImage['label'] ?? '') !== (string)$valueData['label']
+            || (int)($existingImage['position'] ?? 0) !== (int)$valueData['position']
+            || (int)($existingImage['disabled'] ?? 0) !== (int)$valueData['disabled'];
     }
 }

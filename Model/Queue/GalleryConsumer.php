@@ -6,9 +6,8 @@ namespace Nacento\Connector\Model\Queue;
 
 use Magento\AsynchronousOperations\Api\Data\OperationInterface as AsyncOperationInterface;
 use Magento\Framework\Bulk\OperationInterface;
-use Magento\Framework\Bulk\OperationManagementInterface;
 use Magento\Framework\Serialize\SerializerInterface;
-use Nacento\Connector\Api\Data\ImageEntryInterface;
+use Nacento\Connector\Model\Bulk\ImagePayloadNormalizer;
 use Nacento\Connector\Model\Data\ImageEntryFactory;
 use Nacento\Connector\Model\GalleryProcessor;
 use Psr\Log\LoggerInterface;
@@ -18,9 +17,11 @@ class GalleryConsumer
     public function __construct(
         private readonly GalleryProcessor $processor,
         private readonly ImageEntryFactory $imageEntryFactory,
+        private readonly ImagePayloadNormalizer $imagePayloadNormalizer,
+        private readonly FailureClassifier $failureClassifier,
         private readonly SerializerInterface $serializer,
         private readonly LoggerInterface $logger,
-        private readonly OperationManagementInterface $operationManagement
+        private readonly OperationStatusUpdater $operationStatusUpdater
     ) {}
 
     public function process(AsyncOperationInterface $operation): void
@@ -28,14 +29,25 @@ class GalleryConsumer
         $status    = OperationInterface::STATUS_TYPE_COMPLETE;
         $errorCode = null;
         $message   = null;
+        $sku       = '';
+        $requestId = null;
+        $operationKey = method_exists($operation, 'getOperationKey') ? (string)($operation->getOperationKey() ?? '') : '';
 
         $dataJson = (string)($operation->getSerializedData() ?? '');
 
         try {
-            $data = $dataJson !== '' ? $this->serializer->unserialize($dataJson) : [];
+            $decoded = $dataJson !== '' ? $this->serializer->unserialize($dataJson) : [];
+            if (!is_array($decoded)) {
+                throw new \RuntimeException('Message payload is not an object/array');
+            }
+            $data = $decoded;
 
-            $sku    = (string)($data['sku'] ?? '');
+            $sku = trim((string)($data['sku'] ?? ''));
+            if (isset($data['images']) && !is_array($data['images'])) {
+                throw new \RuntimeException('images must be an array in the message payload');
+            }
             $images = (array)($data['images'] ?? []);
+            $requestId = isset($data['request_id']) ? (string)$data['request_id'] : null;
 
             if ($sku === '') {
                 throw new \RuntimeException('SKU is empty in the message payload');
@@ -44,28 +56,34 @@ class GalleryConsumer
             $entries = $this->normalizeImages($images);
             $this->processor->create($sku, $entries);
 
-            $this->logger->debug(sprintf(
-                '[Nacento][GalleryConsumer] opId=%s bulk=%s sku=%s OK',
-                (string)$operation->getId(),
-                (string)$operation->getBulkUuid(),
-                $sku
-            ));
+            $this->logger->debug('[NacentoConnector][GalleryConsumer] Operation processed', [
+                'operation_id' => (string)$operation->getId(),
+                'operation_key' => $operationKey,
+                'bulk_uuid' => (string)$operation->getBulkUuid(),
+                'sku' => $sku,
+                'request_id' => $requestId,
+            ]);
         } catch (\Throwable $e) {
-            $status    = OperationInterface::STATUS_TYPE_NOT_RETRIABLY_FAILED;
+            $status = $this->failureClassifier->isRetriable($e)
+                ? OperationInterface::STATUS_TYPE_RETRIABLY_FAILED
+                : OperationInterface::STATUS_TYPE_NOT_RETRIABLY_FAILED;
             $errorCode = (int)$e->getCode();
             $message   = $e->getMessage();
 
-            $this->logger->error(sprintf(
-                '[Nacento][GalleryConsumer] opId=%s bulk=%s error=%s',
-                (string)$operation->getId(),
-                (string)$operation->getBulkUuid(),
-                $e->getMessage()
-            ));
+            $this->logger->error('[NacentoConnector][GalleryConsumer] Operation failed', [
+                'operation_id' => (string)$operation->getId(),
+                'operation_key' => $operationKey,
+                'bulk_uuid' => (string)$operation->getBulkUuid(),
+                'sku' => $sku,
+                'request_id' => $requestId,
+                'retriable' => $status === OperationInterface::STATUS_TYPE_RETRIABLY_FAILED,
+                'exception' => $e,
+            ]);
         } finally {
-            // 👇 aquest `finally` s’executa tant si hi ha error com si no
-            $this->operationManagement->changeOperationStatus(
+            $this->operationStatusUpdater->update(
                 (string)$operation->getBulkUuid(),
-                (int)$operation->getId(),     // 👈 clau: operation_key
+                (int)$operation->getId(),
+                $operationKey !== '' ? $operationKey : null,
                 $status,
                 $errorCode,
                 $message,
@@ -77,37 +95,8 @@ class GalleryConsumer
     private function normalizeImages(array $images): array
     {
         $out = [];
-
-        foreach ($images as $idx => $img) {
-            if (is_array($img)) {
-                $data = [
-                    'file_path' => isset($img['file_path']) ? (string)$img['file_path'] : '',
-                    'label'     => isset($img['label']) ? (string)$img['label'] : '',
-                    'disabled'  => !empty($img['disabled']),
-                    'position'  => isset($img['position']) ? (int)$img['position'] : 0,
-                    'roles'     => isset($img['roles']) && is_array($img['roles'])
-                        ? array_values(array_filter($img['roles']))
-                        : [],
-                ];
-                $out[] = $this->imageEntryFactory->create(['data' => $data]);
-                continue;
-            }
-
-            if ($img instanceof ImageEntryInterface) {
-                $out[] = $img;
-                continue;
-            }
-
-            if ($img instanceof \Magento\Framework\DataObject) {
-                $out[] = $this->imageEntryFactory->create(['data' => $img->getData()]);
-                continue;
-            }
-
-            $this->logger->warning(sprintf(
-                '[Nacento][GalleryConsumer] Unexpected image payload format at index %d: %s. Skipping.',
-                $idx,
-                gettype($img)
-            ));
+        foreach ($this->imagePayloadNormalizer->normalizeList($images) as $row) {
+            $out[] = $this->imageEntryFactory->create(['data' => $row]);
         }
 
         return $out;

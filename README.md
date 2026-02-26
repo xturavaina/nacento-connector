@@ -1,6 +1,6 @@
 # Nacento Connector
 
-*A Magento 2.4.8 module to synchronize product image galleries from a PIM, using S3/R2 as the source of truth and optimizing performance through ETag change detection and bulk processing (synchronous & asynchronous).*
+*A Magento 2.4.8 module to synchronize product image galleries from a PIM, using S3/R2 as the source of truth and optimizing performance through ETag change detection and asynchronous bulk processing.*
 
 > **ALPHA – HIGHLY EXPERIMENTAL**  
 > This project is **alpha-stage** and **not suitable for production**. Use at your own risk.  
@@ -36,11 +36,17 @@ This module has evolved from a simple single-SKU endpoint into a more comprehens
 
 - **One REST Web API Endpoint:**
     - **Asynchronous bulk** processing via Magento's Message Queue.
+- **Recent Robustness Improvements (internal, payload unchanged):**
+    - Shared payload normalization and validation before queueing.
+    - Stable `operation_key` generation for safer `magento_operation` status updates.
+    - Transactional per-SKU gallery writes (best effort atomicity).
+    - Retry classification (retriable vs non-retriable queue failures).
+    - Payload-owned managed roles (clear then reassign from payload).
 - **Performance Optimization:**
     - Skips Magento’s image processing for improved speed.
-    - Uses a dedicated **S3/R2 client** for `HEAD` requests to check **ETags**, only updating data when necessary.
+    - Uses a dedicated **S3/R2 client** for `HEAD` requests to check **ETags** and skips no-op writes when nothing changed.
 - **Complete Gallery Management:**
-    - Assigns **roles** (`base`, `small_image`, `thumbnail`), **labels**, **position**, and **disabled** status.
+    - Assigns **roles** (`base`, `small_image`, `thumbnail`, `swatch_image`), **labels**, **position**, and **disabled** status.
 - **External Source of Truth:**
     - Works directly with file paths in S3/R2 storage, with no binary uploads to Magento.
 
@@ -175,13 +181,7 @@ bin/magento setup:upgrade
 
 > **Warning:** This process is irreversible and will permanently delete the `nacento_media_gallery_meta` table and all its data.
 
-This module includes an uninstall script that cleans up its database schema. To trigger it, use Magento's `module:uninstall` command with the `--remove-data` flag. This command will:
-1.  Execute the uninstall script to drop the database table.
-2.  Remove the module's code.
-3.  Check if the nacento.gallery.process queue and exchange are empty.
-4.  If empty queue is confirmed, nacento.gallery.process and the exchange will be deleted.
-5.  If one or more messages are found, the script will abort the process and manual cleanup should be executed. 
-6.  Finally, update the `composer.json` and `composer.lock` files.
+This repository currently **does not ship a custom uninstall script** for queue/exchange cleanup. You can still use Magento's `module:uninstall` command, but RabbitMQ queue/exchange cleanup should be treated as a **manual step** (see below).
 
 ```bash
 bin/magento module:uninstall Nacento_Connector --remove-data
@@ -220,7 +220,7 @@ bin/magento queue:consumers:list
 start the connector consumer
 
 ```bash
-bin/magento queue:consumers:start nacento.gallery.process -vvv
+bin/magento queue:consumers:start nacento.gallery.consumer -vvv
 ```
 
 Publishing does not require a running consumer; messages will queue up and be processed when the consumer runs.
@@ -267,14 +267,27 @@ Submits a batch to Magento's message queue for background processing. The respon
 }
 ```
 
+### Behavior Notes (Current Implementation)
+
+- **Payload is the public contract** and remains unchanged.
+- **Bulk dedupe by SKU is last-wins** (only the last valid item for a SKU is queued).
+- Invalid items (for example empty `sku` or images without `file_path`) are **rejected in the async acknowledgment**, and `errors` may be `true`.
+- `request_id` is accepted and propagated for **logging/correlation** (not persisted idempotency yet).
+- Gallery synchronization is **upsert-only**:
+  - listed images are inserted/updated
+  - images not listed are **not deleted**
+- Managed image roles are **payload-owned**:
+  - Magento role attributes (`image`, `small_image`, `thumbnail`, `swatch_image`) are cleared first
+  - then reassigned from payload entries (last role assignment wins)
+
 ---
 
 ## Caveats & Limitations
 
-- Code is ridiculously bad as I am, logic is pure improvitzation, no optimitzation nor process engineering has been done, except to fit my needs. Help on this is highly appreciated.
 - Assumes **S3/R2 URLs are directly consumable** by your frontend (CORS, CDN, permissions are your responsibility).
 - Some Magento features or 3rd-party modules may **expect images to exist physically in `pub/media`**. Validate compatibility.
-- Error handling and retries are **minimal** in the alpha stage.
+- This module intentionally writes gallery rows **directly** (bypassing Magento's native image import/process pipeline). Validate compatibility with modules expecting native side effects.
+- Error handling and retries are improved, but this is still **alpha-stage** software and needs operational monitoring.
 
 ---
 
@@ -293,6 +306,55 @@ Submits a batch to Magento's message queue for background processing. The respon
 
 - **No messages seen in RabbitMQ logs**  
   Magento validates message type & mapping **before** connecting to AMQP. Check your `etc/queue.xml`, `etc/queue_consumer.xml`, and `etc/queue_publisher.xml` configuration.
+
+- **Messages are queued but `magento_operation` statuses do not change**  
+  Common causes:
+  1. Consumer is not running (`nacento.gallery.consumer`) or stops after hitting `maxMessages`.
+  2. Consumer processed the message but failed before status update (check Magento logs for `GalleryConsumer` / `GalleryProcessor` errors).
+  3. Status update lookup failed (this module now updates by `operation_key` first, then falls back to `id`).
+
+- **`magento_bulk`, `magento_operation`, and `magento_acknowledged_bulk` look inconsistent**
+  
+  This is often an **async lifecycle visibility** issue, not necessarily a queue-vs-cron problem.
+  
+  Typical async bulk lifecycle (what Magento writes):
+  1. `magento_bulk`: one row per bulk request (`bulk_uuid`, metadata, description/user context).
+  2. `magento_operation`: one row per queued item/SKU (serialized payload + status transitions).
+  3. `magento_acknowledged_bulk`: admin/user acknowledgment tracking for bulk notifications (not required for queue processing itself, and it may remain empty).
+  
+  Important notes:
+  - **Queue vs cron:** RabbitMQ consumers do the actual processing. Cron is only one way to start/manage consumers (`consumers_runner`). Running the consumer under `supervisord` is valid.
+  - If the consumer is down, `magento_bulk` and `magento_operation` rows may exist while RabbitMQ still has pending messages.
+  - If RabbitMQ is empty but operations remain open, inspect Magento logs and status update behavior.
+  - `magento_acknowledged_bulk` is not the source of truth for whether your SKU/gallery processing completed.
+
+- **Quick DB checks for async bulk debugging**
+  
+  Replace `<bulk_uuid>` with the UUID returned by the API:
+  ```sql
+  SELECT * FROM magento_bulk WHERE uuid = '<bulk_uuid>';
+  
+  SELECT id, bulk_uuid, topic_name, operation_key, status, error_code, result_message
+  FROM magento_operation
+  WHERE bulk_uuid = '<bulk_uuid>'
+  ORDER BY id;
+  
+  SELECT * FROM magento_acknowledged_bulk WHERE bulk_uuid = '<bulk_uuid>';
+  ```
+  
+  Also verify:
+  - RabbitMQ queue depth for `nacento.gallery.process`
+  - consumer process health for `bin/magento queue:consumers:start nacento.gallery.consumer`
+
+## Recent Refactor Notes
+
+The latest internal refactor preserves the external payload but changes internal behavior:
+
+- Shared request/image normalization and validation before queueing.
+- Stable `operation_key` generation for async operations.
+- Module-local `magento_operation` status updater (no global override of Magento bulk operation services).
+- Retriable vs non-retriable failure classification in the queue consumer.
+- Per-SKU transactions and no-op skipping when ETag/metadata is unchanged.
 
 
 ---
